@@ -28,7 +28,11 @@ export default function AreasPage() {
     setAreas(loadedAreas);
   };
 
-  const handleMessageSent = (userMessage: string, aiResponse: string) => {
+  const handleMessageSent = (
+    userMessage: string,
+    aiResponse: string,
+    actions?: Array<{ type: string; data: any }>
+  ) => {
     const newMessages: ChatMessage[] = [
       {
         id: generateId(),
@@ -45,7 +49,23 @@ export default function AreasPage() {
     ];
 
     setMessages((prev) => [...prev, ...newMessages]);
-    setTimeout(loadData, 500);
+
+    // Handle AI actions to update the UI
+    if (actions && actions.length > 0) {
+      actions.forEach((action) => {
+        if (action.type === 'create_area') {
+          handleAICreateArea(action.data);
+        }
+      });
+    }
+  };
+
+  const handleAICreateArea = (data: { name: string; description: string }) => {
+    db.createArea({
+      name: data.name,
+      description: data.description,
+    });
+    loadData();
   };
 
   const handleOpenModal = (area?: Area) => {

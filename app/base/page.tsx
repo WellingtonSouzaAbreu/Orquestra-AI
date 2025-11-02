@@ -28,7 +28,11 @@ export default function BasePage() {
     setOrganization(org);
   };
 
-  const handleMessageSent = (userMessage: string, aiResponse: string) => {
+  const handleMessageSent = (
+    userMessage: string,
+    aiResponse: string,
+    actions?: Array<{ type: string; data: any }>
+  ) => {
     const newMessages: ChatMessage[] = [
       {
         id: generateId(),
@@ -45,7 +49,48 @@ export default function BasePage() {
     ];
 
     setMessages((prev) => [...prev, ...newMessages]);
-    setTimeout(loadData, 500);
+
+    // Handle AI actions to update the UI
+    if (actions && actions.length > 0) {
+      actions.forEach((action) => {
+        if (action.type === 'create_pillar') {
+          handleAICreatePillar(action.data);
+        }
+      });
+    }
+  };
+
+  const handleAICreatePillar = (data: { name: string; description: string }) => {
+    if (!organization) {
+      // Create organization if it doesn't exist
+      const newOrg: Organization = {
+        id: generateId(),
+        name: '',
+        description: '',
+        website: '',
+        files: [],
+        pillars: [{
+          id: generateId(),
+          name: data.name,
+          description: data.description,
+          createdAt: getCurrentTimestamp(),
+        }],
+        createdAt: getCurrentTimestamp(),
+        updatedAt: getCurrentTimestamp(),
+      };
+      db.setOrganization(newOrg);
+    } else {
+      // Add pillar to existing organization
+      const newPillar: Pillar = {
+        id: generateId(),
+        name: data.name,
+        description: data.description,
+        createdAt: getCurrentTimestamp(),
+      };
+      const pillars = organization.pillars || [];
+      db.updateOrganization({ pillars: [...pillars, newPillar] });
+    }
+    loadData();
   };
 
   const handleOpenModal = (pillar?: Pillar) => {

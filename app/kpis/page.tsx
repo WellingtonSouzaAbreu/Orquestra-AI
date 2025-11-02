@@ -35,7 +35,11 @@ export default function KPIsPage() {
     setKpis(loadedKPIs);
   };
 
-  const handleMessageSent = (userMessage: string, aiResponse: string) => {
+  const handleMessageSent = (
+    userMessage: string,
+    aiResponse: string,
+    actions?: Array<{ type: string; data: any }>
+  ) => {
     const newMessages: ChatMessage[] = [
       {
         id: generateId(),
@@ -52,7 +56,26 @@ export default function KPIsPage() {
     ];
 
     setMessages((prev) => [...prev, ...newMessages]);
-    setTimeout(loadData, 500);
+
+    // Handle AI actions to update the UI
+    if (actions && actions.length > 0 && selectedAreaId) {
+      actions.forEach((action) => {
+        if (action.type === 'create_kpi') {
+          handleAICreateKPI(action.data);
+        }
+      });
+    }
+  };
+
+  const handleAICreateKPI = (data: { name: string; description: string }) => {
+    if (!selectedAreaId) return;
+
+    db.createKPI({
+      areaId: selectedAreaId,
+      name: data.name,
+      description: data.description,
+    });
+    loadData();
   };
 
   const handleOpenModal = (kpi?: KPI) => {

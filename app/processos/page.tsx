@@ -49,7 +49,11 @@ export default function ProcessosPage() {
     setStages(Array.from(customStages));
   };
 
-  const handleMessageSent = (userMessage: string, aiResponse: string) => {
+  const handleMessageSent = (
+    userMessage: string,
+    aiResponse: string,
+    actions?: Array<{ type: string; data: any }>
+  ) => {
     const newMessages: ChatMessage[] = [
       {
         id: generateId(),
@@ -66,7 +70,30 @@ export default function ProcessosPage() {
     ];
 
     setMessages((prev) => [...prev, ...newMessages]);
-    setTimeout(loadData, 500);
+
+    // Handle AI actions to update the UI
+    if (actions && actions.length > 0 && selectedAreaId) {
+      actions.forEach((action) => {
+        if (action.type === 'create_process') {
+          handleAICreateProcess(action.data);
+        }
+      });
+    }
+  };
+
+  const handleAICreateProcess = (data: { name: string; description: string; stage: string }) => {
+    if (!selectedAreaId) return;
+
+    const stageProcesses = processes.filter((p) => p.stage === data.stage);
+    db.createProcess({
+      areaId: selectedAreaId,
+      name: data.name,
+      description: data.description,
+      stage: data.stage,
+      position: stageProcesses.length,
+      connections: [],
+    });
+    loadData();
   };
 
   const handleOpenModal = (process?: Process, defaultStage?: string) => {

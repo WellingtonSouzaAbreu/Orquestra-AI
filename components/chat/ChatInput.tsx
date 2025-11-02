@@ -6,7 +6,7 @@ import { sendMessage } from '@/lib/ai/gemini';
 
 interface ChatInputProps {
   context: AgentContext;
-  onMessageSent?: (message: string, response: string) => void;
+  onMessageSent?: (message: string, response: string, actions?: Array<{ type: string; data: any }>) => void;
 }
 
 export default function ChatInput({ context, onMessageSent }: ChatInputProps) {
@@ -23,7 +23,7 @@ export default function ChatInput({ context, onMessageSent }: ChatInputProps) {
 
     try {
       const response = await sendMessage(userMessage, context);
-      onMessageSent?.(userMessage, response.message);
+      onMessageSent?.(userMessage, response.message, response.suggestedActions);
     } catch (error) {
       console.error('Error sending message:', error);
     } finally {

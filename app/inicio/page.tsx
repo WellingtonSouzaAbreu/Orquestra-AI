@@ -21,7 +21,11 @@ export default function InicioPage() {
     setOrganization(org);
   };
 
-  const handleMessageSent = (userMessage: string, aiResponse: string) => {
+  const handleMessageSent = (
+    userMessage: string,
+    aiResponse: string,
+    actions?: Array<{ type: string; data: any }>
+  ) => {
     const newMessages: ChatMessage[] = [
       {
         id: generateId(),
@@ -39,10 +43,41 @@ export default function InicioPage() {
 
     setMessages((prev) => [...prev, ...newMessages]);
 
-    // Try to extract organization info from the conversation
-    // In a real implementation, the AI would return structured data
-    // For now, we'll just reload to check if anything changed
-    setTimeout(loadData, 500);
+    // Handle AI actions to update the UI
+    if (actions && actions.length > 0) {
+      actions.forEach((action) => {
+        if (action.type === 'update_organization') {
+          handleAIUpdate(action.data);
+        }
+      });
+    }
+  };
+
+  const handleAIUpdate = (data: Partial<Organization>) => {
+    // Ensure organization exists
+    if (!organization) {
+      const newOrg: Organization = {
+        id: generateId(),
+        name: data.name || '',
+        description: data.description || '',
+        website: data.website || '',
+        files: [],
+        pillars: [],
+        createdAt: getCurrentTimestamp(),
+        updatedAt: getCurrentTimestamp(),
+      };
+      db.setOrganization(newOrg);
+      setOrganization(newOrg);
+    } else {
+      // Update existing organization with new data
+      const updated = {
+        ...organization,
+        ...data,
+        updatedAt: getCurrentTimestamp(),
+      };
+      db.setOrganization(updated);
+      setOrganization(updated);
+    }
   };
 
   const handleCreateOrganization = () => {
