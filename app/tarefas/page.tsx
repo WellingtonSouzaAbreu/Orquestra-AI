@@ -5,6 +5,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import RightSidebar from '@/components/layout/RightSidebar';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatMessages from '@/components/chat/ChatMessages';
+import ResizableChatContainer from '@/components/chat/ResizableChatContainer';
 import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -62,6 +63,10 @@ export default function TarefasPage() {
       actions.forEach((action) => {
         if (action.type === 'create_task') {
           handleAICreateTask(action.data);
+        } else if (action.type === 'update_task') {
+          handleAIUpdateTask(action.data);
+        } else if (action.type === 'delete_task') {
+          handleAIDeleteTask(action.data);
         }
       });
     }
@@ -75,6 +80,31 @@ export default function TarefasPage() {
       name: data.name,
       description: data.description,
     });
+    loadData();
+  };
+
+  const handleAIUpdateTask = (data: { name: string; newName?: string; description?: string }) => {
+    const task = tasks.find(t => t.name.toLowerCase() === data.name.toLowerCase());
+    if (!task) {
+      console.warn(`Task "${data.name}" not found for update`);
+      return;
+    }
+
+    db.updateTask(task.id, {
+      name: data.newName || task.name,
+      description: data.description || task.description,
+    });
+    loadData();
+  };
+
+  const handleAIDeleteTask = (data: { name: string }) => {
+    const task = tasks.find(t => t.name.toLowerCase() === data.name.toLowerCase());
+    if (!task) {
+      console.warn(`Task "${data.name}" not found for deletion`);
+      return;
+    }
+
+    db.deleteTask(task.id);
     loadData();
   };
 
@@ -130,69 +160,77 @@ export default function TarefasPage() {
         />
       }
     >
-      <div className="flex flex-col h-screen">
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex justify-between items-start mb-8">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Tarefas</h1>
-                {selectedArea && (
-                  <p className="text-gray-600">
-                    Tarefas para: <span className="font-medium text-primary-700">{selectedArea.name}</span>
-                  </p>
+      <ResizableChatContainer
+        content={
+          <div className="p-8">
+            <div className="max-w-4xl mx-auto">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Tarefas</h1>
+                  {selectedArea && (
+                    <p className="text-gray-600">
+                      Tarefas para: <span className="font-medium text-primary-700">{selectedArea.name}</span>
+                    </p>
+                  )}
+                </div>
+                {selectedAreaId && (
+                  <button onClick={() => handleOpenModal()} className="btn-primary">
+                    Adicionar Tarefa
+                  </button>
                 )}
               </div>
-              {selectedAreaId && (
-                <button onClick={() => handleOpenModal()} className="btn-primary">
-                  Adicionar Tarefa
-                </button>
+
+              {!selectedAreaId ? (
+                <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+                  <p className="text-primary-900">
+                    Selecione uma área na barra lateral direita para ver suas tarefas.
+                  </p>
+                </div>
+              ) : tasks.length === 0 ? (
+                <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+                  <p className="text-primary-900">
+                    Nenhuma tarefa cadastrada para esta área. Use o chat abaixo ou clique em "Adicionar Tarefa".
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4 mb-8">
+                  {tasks.map((task) => (
+                    <Card
+                      key={task.id}
+                      title={task.name}
+                      description={task.description}
+                      onEdit={() => handleOpenModal(task)}
+                      onDelete={() => setDeleteConfirm(task.id)}
+                    />
+                  ))}
+                </div>
               )}
             </div>
-
-            {!selectedAreaId ? (
-              <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
-                <p className="text-primary-900">
-                  Selecione uma área na barra lateral direita para ver suas tarefas.
-                </p>
-              </div>
-            ) : tasks.length === 0 ? (
-              <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
-                <p className="text-primary-900">
-                  Nenhuma tarefa cadastrada para esta área. Use o chat abaixo ou clique em "Adicionar Tarefa".
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4 mb-8">
-                {tasks.map((task) => (
-                  <Card
-                    key={task.id}
-                    title={task.name}
-                    description={task.description}
-                    onEdit={() => handleOpenModal(task)}
-                    onDelete={() => setDeleteConfirm(task.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            {selectedAreaId && (
-              <div className="border-t border-gray-200 pt-8">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                  Conversar com o Assistente
-                </h2>
-                <ChatMessages messages={messages} />
-              </div>
-            )}
           </div>
-        </div>
-
-        {selectedAreaId && (
-          <ChatInput
-            context={{ type: 'task', areaId: selectedAreaId, currentPage: 'tarefas' }}
-            onMessageSent={handleMessageSent}
-          />
-        )}
-      </div>
+        }
+        chat={
+          selectedAreaId ? (
+            <div className="flex flex-col h-full">
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="max-w-4xl mx-auto">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                    💬 Conversar com o Assistente
+                  </h2>
+                  <ChatMessages messages={messages} />
+                </div>
+              </div>
+              <ChatInput
+                context={{ type: 'task', areaId: selectedAreaId, currentPage: 'tarefas' }}
+                onMessageSent={handleMessageSent}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500">
+              <p>Selecione uma área para começar a conversar</p>
+            </div>
+          )
+        }
+      />
 
       <Modal
         isOpen={isModalOpen}

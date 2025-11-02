@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
+import ResizableChatContainer from '@/components/chat/ResizableChatContainer';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatMessages from '@/components/chat/ChatMessages';
 import Card from '@/components/ui/Card';
@@ -55,6 +56,10 @@ export default function BasePage() {
       actions.forEach((action) => {
         if (action.type === 'create_pillar') {
           handleAICreatePillar(action.data);
+        } else if (action.type === 'update_pillar') {
+          handleAIUpdatePillar(action.data);
+        } else if (action.type === 'delete_pillar') {
+          handleAIDeletePillar(action.data);
         }
       });
     }
@@ -90,6 +95,38 @@ export default function BasePage() {
       const pillars = organization.pillars || [];
       db.updateOrganization({ pillars: [...pillars, newPillar] });
     }
+    loadData();
+  };
+
+  const handleAIUpdatePillar = (data: { name: string; newName?: string; description?: string }) => {
+    if (!organization) return;
+
+    const pillars = organization.pillars || [];
+    const pillarIndex = pillars.findIndex(p => p.name.toLowerCase() === data.name.toLowerCase());
+
+    if (pillarIndex === -1) {
+      console.warn(`Pillar "${data.name}" not found for update`);
+      return;
+    }
+
+    const updatedPillars = [...pillars];
+    updatedPillars[pillarIndex] = {
+      ...updatedPillars[pillarIndex],
+      name: data.newName || updatedPillars[pillarIndex].name,
+      description: data.description || updatedPillars[pillarIndex].description,
+    };
+
+    db.updateOrganization({ pillars: updatedPillars });
+    loadData();
+  };
+
+  const handleAIDeletePillar = (data: { name: string }) => {
+    if (!organization) return;
+
+    const pillars = organization.pillars || [];
+    const filteredPillars = pillars.filter(p => p.name.toLowerCase() !== data.name.toLowerCase());
+
+    db.updateOrganization({ pillars: filteredPillars });
     loadData();
   };
 
@@ -150,55 +187,61 @@ export default function BasePage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col h-screen">
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex justify-between items-start mb-8">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Base</h1>
-                <p className="text-gray-600">
-                  Defina os pilares fundamentais da sua organização.
-                </p>
+      <ResizableChatContainer
+        content={
+          <div className="p-8">
+            <div className="max-w-4xl mx-auto">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Base</h1>
+                  <p className="text-gray-600">
+                    Defina os pilares fundamentais da sua organização.
+                  </p>
+                </div>
+                <button onClick={() => handleOpenModal()} className="btn-primary">
+                  Adicionar Pilar
+                </button>
               </div>
-              <button onClick={() => handleOpenModal()} className="btn-primary">
-                Adicionar Pilar
-              </button>
-            </div>
 
-            {pillars.length === 0 ? (
-              <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
-                <p className="text-primary-900">
-                  Nenhum pilar definido ainda. Use o chat abaixo para conversar com o assistente ou clique em "Adicionar Pilar".
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4 mb-8">
-                {pillars.map((pillar) => (
-                  <Card
-                    key={pillar.id}
-                    title={pillar.name}
-                    description={pillar.description}
-                    onEdit={() => handleOpenModal(pillar)}
-                    onDelete={() => setDeleteConfirm(pillar.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            <div className="border-t border-gray-200 pt-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Conversar com o Assistente
-              </h2>
-              <ChatMessages messages={messages} />
+              {pillars.length === 0 ? (
+                <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+                  <p className="text-primary-900">
+                    Nenhum pilar definido ainda. Use o chat abaixo para conversar com o assistente ou clique em "Adicionar Pilar".
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4 mb-8">
+                  {pillars.map((pillar) => (
+                    <Card
+                      key={pillar.id}
+                      title={pillar.name}
+                      description={pillar.description}
+                      onEdit={() => handleOpenModal(pillar)}
+                      onDelete={() => setDeleteConfirm(pillar.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-
-        <ChatInput
-          context={{ type: 'organization', currentPage: 'base' }}
-          onMessageSent={handleMessageSent}
-        />
-      </div>
+        }
+        chat={
+          <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="max-w-4xl mx-auto">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                  💬 Conversar com o Assistente
+                </h2>
+                <ChatMessages messages={messages} />
+              </div>
+            </div>
+            <ChatInput
+              context={{ type: 'organization', currentPage: 'base' }}
+              onMessageSent={handleMessageSent}
+            />
+          </div>
+        }
+      />
 
       <Modal
         isOpen={isModalOpen}

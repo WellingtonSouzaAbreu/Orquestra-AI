@@ -32,7 +32,7 @@ export default function ChatInput({ context, onMessageSent }: ChatInputProps) {
   };
 
   return (
-    <div className="border-t border-gray-200 bg-white p-4">
+    <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0">
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
         <div className="flex gap-2">
           <input
@@ -42,11 +42,12 @@ export default function ChatInput({ context, onMessageSent }: ChatInputProps) {
             placeholder="Digite sua mensagem ou pergunta..."
             disabled={isLoading}
             className="input flex-1"
+            autoComplete="off"
           />
           <button
             type="submit"
             disabled={isLoading || !message.trim()}
-            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
           >
             {isLoading ? 'Enviando...' : 'Enviar'}
           </button>

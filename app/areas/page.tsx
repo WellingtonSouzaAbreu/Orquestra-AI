@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
+import ResizableChatContainer from '@/components/chat/ResizableChatContainer';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatMessages from '@/components/chat/ChatMessages';
 import Card from '@/components/ui/Card';
@@ -55,6 +56,10 @@ export default function AreasPage() {
       actions.forEach((action) => {
         if (action.type === 'create_area') {
           handleAICreateArea(action.data);
+        } else if (action.type === 'update_area') {
+          handleAIUpdateArea(action.data);
+        } else if (action.type === 'delete_area') {
+          handleAIDeleteArea(action.data);
         }
       });
     }
@@ -65,6 +70,31 @@ export default function AreasPage() {
       name: data.name,
       description: data.description,
     });
+    loadData();
+  };
+
+  const handleAIUpdateArea = (data: { name: string; newName?: string; description?: string }) => {
+    const area = areas.find(a => a.name.toLowerCase() === data.name.toLowerCase());
+    if (!area) {
+      console.warn(`Area "${data.name}" not found for update`);
+      return;
+    }
+
+    db.updateArea(area.id, {
+      name: data.newName || area.name,
+      description: data.description || area.description,
+    });
+    loadData();
+  };
+
+  const handleAIDeleteArea = (data: { name: string }) => {
+    const area = areas.find(a => a.name.toLowerCase() === data.name.toLowerCase());
+    if (!area) {
+      console.warn(`Area "${data.name}" not found for deletion`);
+      return;
+    }
+
+    db.deleteArea(area.id);
     loadData();
   };
 
@@ -112,55 +142,61 @@ export default function AreasPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col h-screen">
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex justify-between items-start mb-8">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Áreas</h1>
-                <p className="text-gray-600">
-                  Defina as diferentes áreas de atuação da sua organização.
-                </p>
+      <ResizableChatContainer
+        content={
+          <div className="p-8">
+            <div className="max-w-4xl mx-auto">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Áreas</h1>
+                  <p className="text-gray-600">
+                    Defina as diferentes áreas de atuação da sua organização.
+                  </p>
+                </div>
+                <button onClick={() => handleOpenModal()} className="btn-primary">
+                  Adicionar Área
+                </button>
               </div>
-              <button onClick={() => handleOpenModal()} className="btn-primary">
-                Adicionar Área
-              </button>
-            </div>
 
-            {areas.length === 0 ? (
-              <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
-                <p className="text-primary-900">
-                  Nenhuma área cadastrada ainda. Use o chat abaixo para conversar com o assistente ou clique em "Adicionar Área".
-                </p>
-              </div>
-            ) : (
-              <div className="grid gap-4 mb-8">
-                {areas.map((area) => (
-                  <Card
-                    key={area.id}
-                    title={area.name}
-                    description={area.description}
-                    onEdit={() => handleOpenModal(area)}
-                    onDelete={() => setDeleteConfirm(area.id)}
-                  />
-                ))}
-              </div>
-            )}
-
-            <div className="border-t border-gray-200 pt-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                Conversar com o Assistente
-              </h2>
-              <ChatMessages messages={messages} />
+              {areas.length === 0 ? (
+                <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+                  <p className="text-primary-900">
+                    Nenhuma área cadastrada ainda. Use o chat abaixo para conversar com o assistente ou clique em "Adicionar Área".
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-4 mb-8">
+                  {areas.map((area) => (
+                    <Card
+                      key={area.id}
+                      title={area.name}
+                      description={area.description}
+                      onEdit={() => handleOpenModal(area)}
+                      onDelete={() => setDeleteConfirm(area.id)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-        </div>
-
-        <ChatInput
-          context={{ type: 'organization', currentPage: 'areas' }}
-          onMessageSent={handleMessageSent}
-        />
-      </div>
+        }
+        chat={
+          <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="max-w-4xl mx-auto">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                  💬 Conversar com o Assistente
+                </h2>
+                <ChatMessages messages={messages} />
+              </div>
+            </div>
+            <ChatInput
+              context={{ type: 'organization', currentPage: 'areas' }}
+              onMessageSent={handleMessageSent}
+            />
+          </div>
+        }
+      />
 
       <Modal
         isOpen={isModalOpen}

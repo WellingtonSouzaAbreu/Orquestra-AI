@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
 import RightSidebar from '@/components/layout/RightSidebar';
+import ResizableChatContainer from '@/components/chat/ResizableChatContainer';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatMessages from '@/components/chat/ChatMessages';
 import Modal from '@/components/ui/Modal';
@@ -76,6 +77,10 @@ export default function ProcessosPage() {
       actions.forEach((action) => {
         if (action.type === 'create_process') {
           handleAICreateProcess(action.data);
+        } else if (action.type === 'update_process') {
+          handleAIUpdateProcess(action.data);
+        } else if (action.type === 'delete_process') {
+          handleAIDeleteProcess(action.data);
         }
       });
     }
@@ -93,6 +98,32 @@ export default function ProcessosPage() {
       position: stageProcesses.length,
       connections: [],
     });
+    loadData();
+  };
+
+  const handleAIUpdateProcess = (data: { name: string; newName?: string; description?: string; stage?: string }) => {
+    const process = processes.find(p => p.name.toLowerCase() === data.name.toLowerCase());
+    if (!process) {
+      console.warn(`Process "${data.name}" not found for update`);
+      return;
+    }
+
+    db.updateProcess(process.id, {
+      name: data.newName || process.name,
+      description: data.description || process.description,
+      stage: data.stage || process.stage,
+    });
+    loadData();
+  };
+
+  const handleAIDeleteProcess = (data: { name: string }) => {
+    const process = processes.find(p => p.name.toLowerCase() === data.name.toLowerCase());
+    if (!process) {
+      console.warn(`Process "${data.name}" not found for deletion`);
+      return;
+    }
+
+    db.deleteProcess(process.id);
     loadData();
   };
 
@@ -182,39 +213,38 @@ export default function ProcessosPage() {
         />
       }
     >
-      <div className="flex flex-col h-screen">
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex justify-between items-start mb-8">
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">Processos</h1>
-                {selectedArea && (
-                  <p className="text-gray-600">
-                    Mapeamento de processos para: <span className="font-medium text-primary-700">{selectedArea.name}</span>
-                  </p>
+      <ResizableChatContainer
+        content={
+          <div className="p-8">
+            <div className="max-w-7xl mx-auto">
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900 mb-2">Processos</h1>
+                  {selectedArea && (
+                    <p className="text-gray-600">
+                      Mapeamento de processos para: <span className="font-medium text-primary-700">{selectedArea.name}</span>
+                    </p>
+                  )}
+                </div>
+                {selectedAreaId && (
+                  <div className="flex gap-2">
+                    <button onClick={() => setIsStageModalOpen(true)} className="btn-secondary">
+                      Adicionar Coluna
+                    </button>
+                    <button onClick={() => handleOpenModal()} className="btn-primary">
+                      Adicionar Atividade
+                    </button>
+                  </div>
                 )}
               </div>
-              {selectedAreaId && (
-                <div className="flex gap-2">
-                  <button onClick={() => setIsStageModalOpen(true)} className="btn-secondary">
-                    Adicionar Coluna
-                  </button>
-                  <button onClick={() => handleOpenModal()} className="btn-primary">
-                    Adicionar Atividade
-                  </button>
-                </div>
-              )}
-            </div>
 
-            {!selectedAreaId ? (
-              <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
-                <p className="text-primary-900">
-                  Selecione uma área na barra lateral direita para ver seus processos.
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Process Board */}
+              {!selectedAreaId ? (
+                <div className="bg-primary-50 border border-primary-200 rounded-lg p-6 mb-8">
+                  <p className="text-primary-900">
+                    Selecione uma área na barra lateral direita para ver seus processos.
+                  </p>
+                </div>
+              ) : (
                 <div className="mb-8 overflow-x-auto">
                   <div className="flex gap-4 min-w-max pb-4">
                     {stages.map((stage) => {
@@ -275,25 +305,33 @@ export default function ProcessosPage() {
                     })}
                   </div>
                 </div>
-
-                <div className="border-t border-gray-200 pt-8">
-                  <h2 className="text-xl font-semibold text-gray-900 mb-4">
-                    Conversar com o Assistente
+              )}
+            </div>
+          </div>
+        }
+        chat={
+          selectedAreaId ? (
+            <div className="flex flex-col h-full">
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="max-w-4xl mx-auto">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                    💬 Conversar com o Assistente
                   </h2>
                   <ChatMessages messages={messages} />
                 </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {selectedAreaId && (
-          <ChatInput
-            context={{ type: 'process', areaId: selectedAreaId, currentPage: 'processos' }}
-            onMessageSent={handleMessageSent}
-          />
-        )}
-      </div>
+              </div>
+              <ChatInput
+                context={{ type: 'process', areaId: selectedAreaId, currentPage: 'processos' }}
+                onMessageSent={handleMessageSent}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500">
+              <p>Selecione uma área para começar a conversar</p>
+            </div>
+          )
+        }
+      />
 
       {/* Process Modal */}
       <Modal
