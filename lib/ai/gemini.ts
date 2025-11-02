@@ -72,7 +72,7 @@ export async function sendMessage(
 ): Promise<ChatResponse> {
   try {
     // Get the appropriate model
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Build context information
     const contextInfo = buildContextInfo(context);
