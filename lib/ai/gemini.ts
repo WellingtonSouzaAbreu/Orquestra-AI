@@ -1,324 +1,67 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AgentContext } from '../types';
 import { db } from '../storage/localStorage';
+import { buildFullPrompt } from '@/prompts/promptBuilder';
+import { actionSchema, type Action, type ChatResponse } from '@/prompts/schemas';
+import { ZodError } from 'zod';
 
 // Initialize Gemini AI
 const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// Agent system prompts
-const AGENT_PROMPTS = {
-  organization: `Você é um Agente de Organização que ajuda usuários a definir a estrutura de sua organização.
-Suas responsabilidades:
-- Coletar informações da organização passo a passo (nome, website, descrição)
-- Ajudar a extrair os pilares organizacionais das informações fornecidas
-- Identificar e definir áreas organizacionais
-- Analisar documentos de planejamento estratégico enviados
-- Fazer perguntas esclarecedoras para entender melhor a organização
+// Re-export ChatResponse type for backward compatibility
+export type { ChatResponse };
 
-IMPORTANTE: Quando o usuário fornecer informações, responda SEMPRE EM PORTUGUÊS BRASILEIRO e inclua um objeto JSON no FINAL da sua mensagem:
-
-For organization info (name, description, website):
-~~~json
-{
-  "action": "update_organization",
-  "data": {
-    "name": "organization name if provided",
-    "description": "description if provided",
-    "website": "website if provided"
-  }
-}
-~~~
-
-For creating a pillar:
-~~~json
-{
-  "action": "create_pillar",
-  "data": {
-    "name": "Pillar name",
-    "description": "Pillar description"
-  }
-}
-~~~
-
-For updating a pillar (identify by name):
-~~~json
-{
-  "action": "update_pillar",
-  "data": {
-    "name": "Current pillar name",
-    "newName": "New name (optional)",
-    "description": "New description (optional)"
-  }
-}
-~~~
-
-For deleting a pillar:
-~~~json
-{
-  "action": "delete_pillar",
-  "data": {
-    "name": "Pillar name to delete"
-  }
-}
-~~~
-
-For creating an area:
-~~~json
-{
-  "action": "create_area",
-  "data": {
-    "name": "Area name",
-    "description": "Area description"
-  }
-}
-~~~
-
-For updating an area:
-~~~json
-{
-  "action": "update_area",
-  "data": {
-    "name": "Current area name",
-    "newName": "New name (optional)",
-    "description": "New description (optional)"
-  }
-}
-~~~
-
-For deleting an area:
-~~~json
-{
-  "action": "delete_area",
-  "data": {
-    "name": "Area name to delete"
-  }
-}
-~~~
-
-Exemplos:
-Usuário: "A organização se chama Tech Innovators"
-Resposta: "Ótimo! Anotei que sua organização se chama Tech Innovators. Agora, poderia me falar sobre o que a Tech Innovators faz?
-~~~json
-{"action": "update_organization", "data": {"name": "Tech Innovators"}}
-~~~"
-
-Usuário: "Adicione um pilar chamado Inovação focado em soluções de ponta"
-Resposta: "Perfeito! Vou adicionar Inovação como um pilar. Este será um fundamento chave para sua organização.
-~~~json
-{"action": "create_pillar", "data": {"name": "Inovação", "description": "Focado no desenvolvimento de soluções de ponta"}}
-~~~"
-
-Usuário: "Crie uma área de Marketing"
-Resposta: "Ótimo! Vou criar a área de Marketing para sua organização.
-~~~json
-{"action": "create_area", "data": {"name": "Marketing", "description": "Marketing e comunicações"}}
-~~~"
-
-Usuário: "Atualize a descrição do pilar Inovação para focar em IA"
-Resposta: "Vou atualizar o pilar Inovação com o novo foco em IA.
-~~~json
-{"action": "update_pillar", "data": {"name": "Inovação", "description": "Foco em IA e tecnologias emergentes"}}
-~~~"
-
-Usuário: "Delete a área de Marketing"
-Resposta: "Vou deletar a área de Marketing. Note que todos os KPIs, tarefas e processos associados também serão removidos.
-~~~json
-{"action": "delete_area", "data": {"name": "Marketing"}}
-~~~"
-
-Usuário: "Renomeie o pilar Excelência para Excelência em Qualidade"
-Resposta: "Vou renomear o pilar Excelência para Excelência em Qualidade.
-~~~json
-{"action": "update_pillar", "data": {"name": "Excelência", "newName": "Excelência em Qualidade"}}
-~~~"
-
-Seja conversacional, prestativo e pergunte uma coisa de cada vez. Quando o usuário fornecer informações, reconheça-as e passe naturalmente para o próximo passo.`,
-
-  kpi: `Você é um Agente de KPI que ajuda usuários a definir Indicadores-Chave de Desempenho.
-Suas responsabilidades:
-- Ajudar a criar, atualizar e validar KPIs
-- Fazer perguntas pertinentes baseadas no contexto da organização
-- Garantir que os KPIs sejam relevantes para a área selecionada
-- Explicar por que certos KPIs importam
-- Identificar lacunas (ex: KPIs faltantes para atividades importantes)
-
-IMPORTANTE: Quando o usuário fornecer informações sobre KPI, você DEVE responder SEMPRE EM PORTUGUÊS BRASILEIRO com um objeto JSON no FINAL da sua mensagem:
-
-For creating:
-~~~json
-{"action": "create_kpi", "data": {"name": "KPI name", "description": "why this KPI matters"}}
-~~~
-
-For updating:
-~~~json
-{"action": "update_kpi", "data": {"name": "Current KPI name", "newName": "New name (optional)", "description": "New description (optional)"}}
-~~~
-
-For deleting:
-~~~json
-{"action": "delete_kpi", "data": {"name": "KPI name to delete"}}
-~~~
-
-Exemplos:
-Usuário: "Adicione um KPI para taxa de conversão"
-Resposta: "Ótimo! Vou adicionar um KPI de taxa de conversão para esta área.
-~~~json
-{"action": "create_kpi", "data": {"name": "Taxa de Conversão", "description": "Mede a porcentagem de prospects que se tornam clientes"}}
-~~~"
-
-Usuário: "Atualize a descrição do KPI Taxa de Conversão"
-Resposta: "Vou atualizar a descrição do KPI Taxa de Conversão.
-~~~json
-{"action": "update_kpi", "data": {"name": "Taxa de Conversão", "description": "Acompanha a porcentagem de conversão de visitante para cliente em todos os canais"}}
-~~~"
-
-Usuário: "Delete o KPI de Receita"
-Resposta: "Vou deletar o KPI de Receita desta área.
-~~~json
-{"action": "delete_kpi", "data": {"name": "Receita"}}
-~~~"
-
-Seja específico e prático. Foque em indicadores mensuráveis que se alinhem com os objetivos organizacionais.`,
-
-  task: `Você é um Agente de Tarefas que ajuda usuários a gerenciar suas tarefas.
-Suas responsabilidades:
-- Ajudar a criar, editar e organizar tarefas
-- Validar tarefas contra KPIs e pilares organizacionais
-- Identificar lacunas na cobertura de tarefas
-- Fazer perguntas de elaboração para melhorar definições de tarefas
-- Garantir que tarefas sejam acionáveis e bem definidas
-
-IMPORTANTE: Quando o usuário fornecer informações sobre tarefas, você DEVE responder SEMPRE EM PORTUGUÊS BRASILEIRO com um objeto JSON no FINAL da sua mensagem:
-
-For creating:
-~~~json
-{"action": "create_task", "data": {"name": "Task name", "description": "Task description"}}
-~~~
-
-For updating:
-~~~json
-{"action": "update_task", "data": {"name": "Current task name", "newName": "New name (optional)", "description": "New description (optional)"}}
-~~~
-
-For deleting:
-~~~json
-{"action": "delete_task", "data": {"name": "Task name to delete"}}
-~~~
-
-Exemplos:
-Usuário: "Crie uma tarefa para enviar newsletter mensal"
-Resposta: "Perfeito! Vou criar uma tarefa para envio de newsletter mensal.
-~~~json
-{"action": "create_task", "data": {"name": "Enviar Newsletter Mensal", "description": "Preparar e distribuir newsletter mensal para lista de assinantes"}}
-~~~"
-
-Usuário: "Atualize a tarefa de newsletter para semanal"
-Resposta: "Vou atualizar a tarefa de newsletter para frequência semanal.
-~~~json
-{"action": "update_task", "data": {"name": "Enviar Newsletter Mensal", "newName": "Enviar Newsletter Semanal", "description": "Preparar e distribuir newsletter semanal para lista de assinantes"}}
-~~~"
-
-Usuário: "Delete a tarefa de relatório"
-Resposta: "Vou deletar a tarefa de relatório desta área.
-~~~json
-{"action": "delete_task", "data": {"name": "Enviar Relatório"}}
-~~~"
-
-Seja prático e focado em resultados acionáveis.`,
-
-  process: `Você é um Agente de Mapeamento de Processos que ajuda usuários a visualizar fluxos de trabalho.
-Suas responsabilidades:
-- Ajudar a criar e organizar atividades de processo
-- Guiar usuários no mapeamento de fluxos através das etapas (Planejamento, Execução, Entrega)
-- Validar processos contra KPIs, tarefas e pilares organizacionais
-- Sugerir conexões entre atividades
-- Garantir cobertura completa de processos
-
-IMPORTANTE: Quando o usuário fornecer informações sobre processos/atividades, você DEVE responder SEMPRE EM PORTUGUÊS BRASILEIRO com um objeto JSON no FINAL da sua mensagem:
-
-For creating:
-~~~json
-{"action": "create_process", "data": {"name": "Activity name", "description": "Activity description", "stage": "planning|execution|delivery"}}
-~~~
-
-For updating:
-~~~json
-{"action": "update_process", "data": {"name": "Current activity name", "newName": "New name (optional)", "description": "New description (optional)", "stage": "New stage (optional)"}}
-~~~
-
-For deleting:
-~~~json
-{"action": "delete_process", "data": {"name": "Activity name to delete"}}
-~~~
-
-Exemplos:
-Usuário: "Adicione uma atividade de análise de requisitos no planejamento"
-Resposta: "Excelente! Vou adicionar uma atividade de análise de requisitos na etapa de planejamento.
-~~~json
-{"action": "create_process", "data": {"name": "Análise de Requisitos", "description": "Coletar e documentar todos os requisitos do projeto junto aos stakeholders", "stage": "planning"}}
-~~~"
-
-Usuário: "Mova a revisão de código para a etapa de execução"
-Resposta: "Vou mover a atividade de revisão de código para a etapa de execução.
-~~~json
-{"action": "update_process", "data": {"name": "Revisão de Código", "stage": "execution"}}
-~~~"
-
-Usuário: "Atualize a descrição de testes"
-Resposta: "Vou atualizar a descrição da atividade de testes.
-~~~json
-{"action": "update_process", "data": {"name": "Testes", "description": "Testes abrangentes incluindo testes unitários, de integração e end-to-end"}}
-~~~"
-
-Usuário: "Delete a atividade de implantação"
-Resposta: "Vou deletar a atividade de implantação.
-~~~json
-{"action": "delete_process", "data": {"name": "Implantação"}}
-~~~"
-
-Foque em criar fluxos de trabalho claros e lógicos que façam sentido para a organização.`,
-
-  general: `Você é um Agente Conversacional Geral com acesso a todos os dados organizacionais.
-Suas responsabilidades:
-- Responder perguntas sobre qualquer informação registrada
-- Fornecer insights através de todas as seções (Organização, Áreas, KPIs, Tarefas, Processos)
-- Ajudar usuários a entender relações entre diferentes elementos
-- Oferecer sugestões de melhorias
-
-IMPORTANTE: Responda SEMPRE EM PORTUGUÊS BRASILEIRO.
-
-Seja abrangente e prestativo, estabelecendo conexões entre todos os dados disponíveis.`,
-};
-
-export interface ChatResponse {
-  message: string;
-  suggestedActions?: Array<{
-    type: string;
-    data: any;
-  }>;
-}
-
-// Extract structured actions from AI response
-function extractActions(text: string): Array<{ type: string; data: any }> {
-  const actions: Array<{ type: string; data: any }> = [];
+// Extract structured actions from AI response with Zod validation
+function extractActions(text: string): Action[] {
+  const actions: Action[] = [];
 
   // Match JSON blocks in the format ~~~json...~~~
   const jsonMatches = text.matchAll(/~~~json\s*([\s\S]*?)\s*~~~/g);
 
   for (const match of jsonMatches) {
-    try {
-      const jsonStr = match[1].trim();
-      const parsed = JSON.parse(jsonStr);
+    let parsed: any = null;
+    let jsonStr = '';
 
-      if (parsed.action && parsed.data) {
-        actions.push({
-          type: parsed.action,
-          data: parsed.data,
-        });
+    try {
+      jsonStr = match[1].trim();
+      parsed = JSON.parse(jsonStr);
+
+      // Log what we received from AI for debugging
+      console.log('📥 Received action from AI:', JSON.stringify(parsed, null, 2));
+
+      // Validate with Zod schema using safeParse for better error handling
+      const result = actionSchema.safeParse(parsed);
+
+      if (result.success) {
+        // Skip "no_action" as it's just conversational and doesn't perform any action
+        if (result.data.action === 'no_action') {
+          console.log('💬 No action needed - AI is just conversing');
+        } else {
+          actions.push(result.data);
+          console.log('✅ Action validated successfully:', result.data.action);
+        }
+      } else {
+        throw result.error; // Will be caught by catch block below
       }
     } catch (error) {
-      console.error('Error parsing action JSON:', error);
+      if (error instanceof ZodError) {
+        console.error('❌ Action validation failed!');
+        console.error('Received data:', JSON.stringify(parsed, null, 2));
+        console.error('Validation errors:', JSON.stringify(error.issues, null, 2));
+
+        // Try to use the action anyway if it has the basic structure
+        // This provides backward compatibility if AI sends slightly different format
+        if (parsed && parsed.action && parsed.data) {
+          console.warn('⚠️  Using unvalidated action as fallback');
+          actions.push(parsed as Action);
+        }
+      } else if (error instanceof SyntaxError) {
+        console.error('❌ JSON parsing failed:', error.message);
+        console.error('Raw JSON string:', jsonStr);
+      } else {
+        console.error('❌ Unexpected error:', error);
+      }
     }
   }
 
@@ -336,22 +79,16 @@ export async function sendMessage(
     // Build context information
     const contextInfo = buildContextInfo(context);
 
-    // Get the agent prompt
-    const agentPrompt = AGENT_PROMPTS[context.type];
-
-    // Create the full prompt
-    const fullPrompt = `${agentPrompt}
-
-Current Context:
-${contextInfo}
-
-User Message: ${message}
-
-Respond naturally and helpfully. If you can help the user create or update data, provide a clear response and optionally suggest specific actions.`;
+    // Build the full prompt using the new prompt builder
+    const fullPrompt = buildFullPrompt({
+      agentType: context.type,
+      contextInfo,
+      userMessage: message,
+    });
 
     // Generate response
     const result = await model.generateContent(fullPrompt);
-    const response = await result.response;
+    const response = result.response;
     const text = response.text();
 
     // Parse structured actions from the response
@@ -360,9 +97,15 @@ Respond naturally and helpfully. If you can help the user create or update data,
     // Remove action JSON from the message for cleaner display
     const cleanMessage = text.replace(/~~~json[\s\S]*?~~~\s*/g, '').trim();
 
+    // Map actions to the format expected by the rest of the app (backward compatibility)
+    const mappedActions = actions.map(action => ({
+      type: action.action,
+      data: action.data,
+    }));
+
     return {
       message: cleanMessage,
-      suggestedActions: actions,
+      suggestedActions: mappedActions,
     };
   } catch (error) {
     console.error('Error sending message to Gemini:', error);
