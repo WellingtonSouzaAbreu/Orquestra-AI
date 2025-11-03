@@ -1,218 +1,365 @@
-# Consultoria - Gestão Organizacional
+# Consultoria - AI-Powered Organizational Management
 
-Uma plataforma de gestão organizacional com agentes de IA que ajudam a organizar estruturas empresariais, definir KPIs, gerenciar tarefas e mapear processos através de interfaces conversacionais.
+An intelligent platform that helps businesses structure their operations through conversational AI. Manage organizational pillars, areas, KPIs, tasks, and processes using natural language interactions powered by Google Gemini AI.
 
-## 🌟 Funcionalidades
+## Tech Stack
 
-### Organização
-- **Início**: Colete informações básicas da organização (nome, descrição, website, arquivos estratégicos)
-- **Base**: Defina pilares fundamentais da organização
-- **Áreas**: Cadastre e gerencie diferentes áreas de atuação
+- **Frontend**: Next.js 16, React 19, TypeScript 5.9
+- **Styling**: Tailwind CSS 3.4 with custom blue theme
+- **AI**: Google Gemini AI (gemini-2.0-flash)
+- **Validation**: Zod 4.1 for runtime type safety
+- **UI Libraries**: @dnd-kit (drag-and-drop), react-markdown
+- **Storage**: LocalStorage with migration-ready database abstraction
 
-### Gestão por Área
-- **KPIs**: Defina indicadores de desempenho por área
-- **Tarefas**: Gerencie tarefas específicas de cada área
-- **Processos**: Mapeie workflows visuais com etapas customizáveis
+## Features
 
-### Conversação Geral
-- **Conversar**: Chat geral com acesso a todos os dados da organização
-- Faça perguntas sobre qualquer aspecto cadastrado
-- Obtenha insights e sugestões do assistente de IA
+### Core Capabilities
+- **Multi-Agent AI System** - 5 specialized AI agents for different organizational aspects
+- **Natural Language CRUD** - Create, update, and delete entities via conversational chat
+- **Visual Process Mapping** - Drag-and-drop Kanban board for workflow management
+- **Context-Aware Intelligence** - AI agents understand organizational structure and relationships
+- **Resizable Split-Screen** - Innovative chat interface with adjustable workspace
+- **Area-Based Organization** - Filter and manage data by department/function
 
-## 🚀 Tecnologias
+### Pages & Functionality
 
-- **Next.js 14+** - Framework React
-- **TypeScript** - Tipagem estática
-- **Tailwind CSS** - Estilização
-- **Gemini AI** - Integração com IA
-- **Local Storage** - Persistência de dados (migrável)
+| Page | Purpose | AI Agent | Key Features |
+|------|---------|----------|--------------|
+| `/welcome` | User onboarding | - | Nickname-based authentication |
+| `/inicio` | Organization setup | Organization | Define pillars & company info |
+| `/areas` | Area management | Organization | CRUD for departments/functions |
+| `/kpis` | Performance metrics | KPI | Area-specific indicators |
+| `/tarefas` | Task tracking | Task | Action items per area |
+| `/processos` | Process mapping | Process | Drag-drop workflow board |
+| `/conversar` | General insights | General | Cross-sectional analysis |
 
-## 📦 Instalação
-
-### Pré-requisitos
-
-- Node.js 18+ instalado
-- Uma chave de API do Google Gemini
-
-### Passos
-
-1. Clone ou navegue até o diretório do projeto:
-```bash
-cd consultoria-app
-```
-
-2. Instale as dependências:
-```bash
-npm install
-```
-
-3. Configure a API Key do Gemini:
-```bash
-cp .env.local.example .env.local
-```
-
-Edite `.env.local` e adicione sua chave:
-```env
-NEXT_PUBLIC_GEMINI_API_KEY=sua_chave_aqui
-```
-
-4. Inicie o servidor de desenvolvimento:
-```bash
-npm run dev
-```
-
-5. Acesse http://localhost:3000 no navegador
-
-## 🎯 Como Usar
-
-### Primeiro Acesso
-
-1. Digite seu nome/apelido na tela de boas-vindas
-2. Você será direcionado para a página Início
-
-### Configuração Inicial
-
-1. **Início**: Configure informações básicas da organização
-2. **Base**: Defina pilares organizacionais
-3. **Áreas**: Cadastre áreas de atuação (Marketing, TI, RH, etc.)
-
-### Gerenciamento
-
-4. **KPIs**: Selecione uma área e defina indicadores
-5. **Tarefas**: Cadastre tarefas por área
-6. **Processos**: Mapeie workflows com arrastar e soltar
-
-### Conversa com IA
-
-- Use o chat no rodapé de cada página para interação contextual
-- Vá em "Conversar" para perguntas gerais sobre toda a organização
-
-## 🏗 Estrutura do Projeto
+## Project Structure
 
 ```
-consultoria-app/
-├── app/                      # Páginas Next.js (App Router)
-│   ├── areas/               # Página de áreas
-│   ├── base/                # Página de pilares
-│   ├── conversar/           # Chat geral
-│   ├── inicio/              # Página inicial
-│   ├── kpis/                # Página de KPIs
-│   ├── processos/           # Mapeamento de processos
-│   ├── tarefas/             # Página de tarefas
-│   └── welcome/             # Tela de boas-vindas
-├── components/              # Componentes React
-│   ├── chat/               # Componentes de chat
-│   ├── layout/             # Layouts e sidebars
-│   └── ui/                 # Componentes UI reutilizáveis
-├── lib/                     # Lógica de negócio
-│   ├── ai/                 # Integração com Gemini
-│   ├── storage/            # Abstração de banco de dados
-│   ├── types/              # TypeScript types
-│   └── utils/              # Funções utilitárias
-└── public/                  # Arquivos estáticos
+├── app/                          # Next.js App Router pages
+│   ├── areas/                   # Area management
+│   ├── base/                    # Organizational pillars
+│   ├── conversar/               # General chat & analytics
+│   ├── inicio/                  # Organization setup
+│   ├── kpis/                    # KPI management
+│   ├── processos/               # Process mapping (drag-drop)
+│   ├── tarefas/                 # Task management
+│   └── welcome/                 # Onboarding
+│
+├── components/
+│   ├── chat/                    # ChatInput, ChatMessages, ResizableChatContainer
+│   ├── layout/                  # AppLayout, Sidebars
+│   └── ui/                      # Reusable UI components
+│
+├── lib/
+│   ├── ai/                      # Gemini AI integration & action extraction
+│   ├── storage/                 # Database abstraction layer
+│   ├── types/                   # TypeScript definitions
+│   └── utils/                   # Utility functions
+│
+└── prompts/                     # AI agent system prompts & schemas
+    ├── organizationPrompt/      # Modular agent prompts
+    ├── schemas.ts               # Zod validation schemas
+    └── promptBuilder.ts         # Context assembly logic
 ```
 
-## 🤖 Agentes de IA
+## How It Works
 
-### Organization Agent
-- Coleta informações organizacionais
-- Extrai pilares e áreas
-- Analisa documentos estratégicos
+### Multi-Agent Architecture
 
-### KPI Agent
-- Ajuda a definir indicadores relevantes
-- Valida KPIs contra contexto organizacional
-- Identifica lacunas de medição
+The application uses **5 specialized AI agents**, each with specific responsibilities:
 
-### Task Agent
-- Auxilia na criação de tarefas
-- Valida tarefas contra KPIs
-- Identifica gaps de cobertura
+1. **Organization Agent** - Manages company info, pillars, and areas
+2. **KPI Agent** - Defines performance indicators for areas
+3. **Task Agent** - Creates and manages tasks
+4. **Process Agent** - Maps workflows and processes
+5. **General Agent** - Provides insights across entire organization
 
-### Process Mapping Agent
-- Guia mapeamento de workflows
-- Sugere conexões entre atividades
-- Valida processos contra objetivos
+### AI Action Processing Flow
 
-### General Agent
-- Acesso a todos os dados
-- Responde perguntas gerais
-- Oferece insights cruzados
+```
+User types message
+    ↓
+ChatInput sends to Gemini AI with agent context
+    ↓
+AI responds with: message text + JSON action
+    ↓
+extractActions() validates with Zod schemas
+    ↓
+Page handler executes action (create/update/delete)
+    ↓
+LocalStorage persisted
+    ↓
+UI refreshes with updated data
+```
 
-## 💾 Armazenamento de Dados
-
-Os dados são armazenados no **localStorage** do navegador. A arquitetura modular permite fácil migração para:
-
-- PostgreSQL
-- MongoDB
-- Firebase
-- Supabase
-
-Para migrar, basta implementar a interface `IDatabase` em `lib/storage/database.ts`.
-
-## 🎨 Customização
-
-### Cores
-
-O tema azul pode ser customizado em `tailwind.config.ts`:
+### AI Response Format
 
 ```typescript
-colors: {
-  primary: {
-    // Modifique os valores aqui
+// User: "Create a KPI called Conversion Rate"
+// AI responds:
+
+"Ótimo! Vou criar esse KPI para você..."
+
+~~~json
+{
+  "action": "create_kpi",
+  "data": {
+    "name": "Conversion Rate",
+    "description": "Percentage of visitors who convert"
   }
 }
+~~~
 ```
 
-### Agentes
+Actions are validated using Zod schemas before execution, ensuring type safety.
 
-Customize os prompts dos agentes em `lib/ai/gemini.ts`:
+### Context-Aware Intelligence
+
+Each AI agent receives relevant context:
+
+- **Organization data** (name, description, pillars)
+- **All areas** with descriptions
+- **Area-specific data** (KPIs, tasks, processes for selected area)
+- **Full organizational data** (General Agent only)
+
+This enables intelligent, contextually appropriate responses.
+
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- Google Gemini API key
+
+### Installation
+
+```bash
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env.local
+# Add your Gemini API key to .env.local
+```
+
+### Environment Variables
+
+```env
+NEXT_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+### Development
+
+```bash
+# Run development server
+npm run dev
+
+# Open http://localhost:3000
+```
+
+### Build & Deploy
+
+```bash
+# Production build
+npm run build
+
+# Start production server
+npm start
+```
+
+## Data Model
+
+### Entity Hierarchy
+
+```
+Organization
+├── name, description, website
+├── Pillars[] (core values/principles)
+│   └── name, description
+│
+└── Areas[] (departments/functions)
+    ├── name, description
+    │
+    ├── KPIs[] (performance metrics)
+    │   └── name, description
+    │
+    ├── Tasks[] (action items)
+    │   └── name, description
+    │
+    └── Processes[] (workflow steps)
+        └── name, description, stage, position
+```
+
+### Core Types
 
 ```typescript
-const AGENT_PROMPTS = {
-  // Edite os prompts aqui
+interface Organization {
+  id: string;
+  name: string;
+  description: string;
+  website: string;
+  pillars: Pillar[];
+}
+
+interface Pillar {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface Area {
+  id: string;
+  name: string;
+  description: string;
+}
+
+interface KPI {
+  id: string;
+  areaId: string;  // Links to Area
+  name: string;
+  description: string;
+}
+
+interface Task {
+  id: string;
+  areaId: string;  // Links to Area
+  name: string;
+  description: string;
+}
+
+interface Process {
+  id: string;
+  areaId: string;  // Links to Area
+  name: string;
+  description: string;
+  stage: string;   // 'planning' | 'execution' | 'delivery' | custom
+  position: number; // Order within stage
 }
 ```
 
-## 📝 Scripts Disponíveis
+## Key Concepts
 
-```bash
-npm run dev      # Servidor de desenvolvimento
-npm run build    # Build para produção
-npm run start    # Inicia servidor de produção
-npm run lint     # Executa linter
+### Database Abstraction
+
+The app uses an `IDatabase` interface for storage operations:
+
+```typescript
+interface IDatabase {
+  // Organization
+  getOrganization(): Organization | null;
+  setOrganization(org: Organization): void;
+
+  // Areas
+  getAreas(): Area[];
+  createArea(area: Omit<Area, 'id' | 'createdAt'>): Area;
+  updateArea(id: string, updates: Partial<Area>): void;
+  deleteArea(id: string): void;
+
+  // Similar for KPIs, Tasks, Processes...
+}
 ```
 
-## 🔒 Segurança
+**Current Implementation**: LocalStorage
+**Future Options**: PostgreSQL, Supabase, MongoDB, Firebase
 
-- A API Key do Gemini é exposta no cliente (NEXT_PUBLIC_*)
-- Para produção, considere usar rotas de API do Next.js
-- Dados armazenados localmente no navegador
-- Sem autenticação real (apenas nickname)
+Simply swap the implementation to migrate storage backends without changing application code.
 
-## 🚀 Deploy
+### Action Validation with Zod
 
-### Vercel (Recomendado)
+All AI actions are validated at runtime:
 
-```bash
-npm install -g vercel
-vercel
+```typescript
+// Schema definition
+const createKpiSchema = z.object({
+  action: z.literal('create_kpi'),
+  data: z.object({
+    name: z.string(),
+    description: z.string(),
+  }),
+});
+
+// Runtime validation
+const result = createKpiSchema.safeParse(action);
+if (result.success) {
+  // Execute action
+}
 ```
 
-Não esqueça de adicionar a variável de ambiente `NEXT_PUBLIC_GEMINI_API_KEY` no painel da Vercel.
+This prevents malformed AI responses from causing errors.
 
-## 📄 Licença
+### Resizable Chat Interface
 
-Este projeto foi criado como exemplo educacional.
+Innovative split-screen design with draggable divider:
 
-## 🤝 Contribuindo
+- **Top Section**: Page content (70-85% height)
+- **Resize Handle**: Smooth dragging with visual feedback
+- **Bottom Section**: AI chat (15-70% height)
+- **Constraints**: Minimum/maximum heights for usability
 
-Contribuições são bem-vindas! Sinta-se livre para abrir issues ou pull requests.
+### Drag-and-Drop Process Board
 
-## 📧 Suporte
+Kanban-style board powered by @dnd-kit:
 
-Para dúvidas ou problemas, abra uma issue no repositório.
+- **Drag cards** between columns (workflow stages)
+- **Reorder cards** within same column
+- **Drag columns** to reorder stages
+- **Auto-save** positions to database
+- **Visual feedback** with drag overlay
 
----
+Default stages: Planning → Execution → Delivery (customizable)
 
-Desenvolvido com ❤️ usando Next.js e Gemini AI
+## Architecture Decisions
+
+### Why No Redux/Zustand?
+Simple use case with LocalStorage persistence. Direct database calls are sufficient. React's built-in state management handles UI state effectively.
+
+### Why Client-Side AI?
+Faster prototyping and development. API key exposed via `NEXT_PUBLIC_*` for client-side calls. For production, migrate to Next.js API routes for security.
+
+### Why LocalStorage?
+Quick setup for prototype. Database abstraction allows seamless migration to PostgreSQL/Supabase when ready for multi-user scenarios.
+
+### Why Portuguese Language?
+Target audience is Portuguese-speaking organizations in Brazil. All AI prompts and UI optimized for Brazilian Portuguese.
+
+### Why Modular Prompts?
+Each agent has separate prompt file for easy customization. Prompt builder composes context dynamically. Easy to extend or modify agent behaviors.
+
+## Future Enhancements
+
+- [ ] **Authentication** - NextAuth.js for real user accounts
+- [ ] **Database Migration** - Move to PostgreSQL/Supabase
+- [ ] **File Upload** - Complete strategic document upload feature
+- [ ] **Process Connections** - Visual flow diagrams with arrows
+- [ ] **Analytics Dashboard** - Data visualizations
+- [ ] **Export/Import** - Backup and restore functionality
+- [ ] **Real-time Collaboration** - Multi-user WebSocket support
+- [ ] **API Security** - Move Gemini calls server-side
+- [ ] **Mobile App** - React Native version
+
+## Development Notes
+
+### Adding a New AI Agent
+
+1. Create prompt file in `prompts/organizationPrompt/`
+2. Add Zod schema to `prompts/schemas.ts`
+3. Update `AgentType` in `lib/types/index.ts`
+4. Modify `buildFullPrompt()` in `prompts/promptBuilder.ts`
+5. Create page component with `ChatInput` using new agent type
+
+### Adding a New Entity Type
+
+1. Define interface in `lib/types/index.ts`
+2. Add CRUD methods to `IDatabase` interface
+3. Implement in `LocalStorageDatabase` class
+4. Create Zod action schemas
+5. Update relevant AI agent prompts
+6. Build UI page component
+
+## License
+
+[Add your license here]
+
+## Contributing
+
+[Add contribution guidelines here]
