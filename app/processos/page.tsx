@@ -1,6 +1,25 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCorners,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+  horizontalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import AppLayout from '@/components/layout/AppLayout';
 import RightSidebar from '@/components/layout/RightSidebar';
 import ResizableChatContainer from '@/components/chat/ResizableChatContainer';
@@ -11,9 +30,136 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Process, ChatMessage, Area } from '@/lib/types';
 import { db } from '@/lib/storage/localStorage';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
-import { cn } from '@/lib/utils';
 
 const DEFAULT_STAGES = ['planning', 'execution', 'delivery'];
+
+// Sortable Card Component
+function SortableCard({
+  process,
+  onEdit,
+  onDelete,
+}: {
+  process: Process;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: process.id,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <div className="bg-white rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing group">
+        <div className="flex justify-between items-start mb-2">
+          <h4 className="font-medium text-gray-900 flex-1">{process.name}</h4>
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit();
+              }}
+              className="text-primary-600 hover:text-primary-700 text-xs"
+            >
+              ✎
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="text-red-600 hover:text-red-700 text-xs"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <p className="text-sm text-gray-600 line-clamp-2">{process.description}</p>
+      </div>
+    </div>
+  );
+}
+
+// Sortable Column Component
+function SortableColumn({
+  stage,
+  processes,
+  getStageLabel,
+  onAddActivity,
+  onEditProcess,
+  onDeleteProcess,
+  onDeleteColumn,
+  isDefault,
+}: {
+  stage: string;
+  processes: Process[];
+  getStageLabel: (stage: string) => string;
+  onAddActivity: (stage: string) => void;
+  onEditProcess: (process: Process) => void;
+  onDeleteProcess: (id: string) => void;
+  onDeleteColumn: (stage: string) => void;
+  isDefault: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: stage,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="w-80 flex-shrink-0">
+      <div className="bg-gray-100 rounded-lg p-4">
+        <div className="flex justify-between items-center mb-4" {...attributes} {...listeners}>
+          <h3 className="font-semibold text-gray-900 uppercase text-sm cursor-grab active:cursor-grabbing">
+            {getStageLabel(stage)}
+          </h3>
+          <div className="flex items-center gap-2">
+            <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded-full">
+              {processes.length}
+            </span>
+            {!isDefault && (
+              <button
+                onClick={() => onDeleteColumn(stage)}
+                className="text-red-600 hover:text-red-700 text-sm"
+                title="Deletar coluna"
+              >
+                🗑️
+              </button>
+            )}
+          </div>
+        </div>
+
+        <SortableContext items={processes.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+          <div className="space-y-3">
+            {processes.map((process) => (
+              <SortableCard
+                key={process.id}
+                process={process}
+                onEdit={() => onEditProcess(process)}
+                onDelete={() => onDeleteProcess(process.id)}
+              />
+            ))}
+
+            <button
+              onClick={() => onAddActivity(stage)}
+              className="w-full py-2 text-sm text-gray-500 hover:text-primary-700 hover:bg-white rounded-lg transition-colors"
+            >
+              + Adicionar atividade
+            </button>
+          </div>
+        </SortableContext>
+      </div>
+    </div>
+  );
+}
 
 export default function ProcessosPage() {
   const [selectedAreaId, setSelectedAreaId] = useState<string>('');
@@ -27,6 +173,16 @@ export default function ProcessosPage() {
   const [processForm, setProcessForm] = useState({ name: '', description: '', stage: 'planning' });
   const [newStageName, setNewStageName] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteColumnConfirm, setDeleteColumnConfirm] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   useEffect(() => {
     if (selectedAreaId) {
@@ -102,7 +258,7 @@ export default function ProcessosPage() {
   };
 
   const handleAIUpdateProcess = (data: { name: string; newName?: string; description?: string; stage?: string }) => {
-    const process = processes.find(p => p.name.toLowerCase() === data.name.toLowerCase());
+    const process = processes.find((p) => p.name.toLowerCase() === data.name.toLowerCase());
     if (!process) {
       console.warn(`Process "${data.name}" not found for update`);
       return;
@@ -117,7 +273,7 @@ export default function ProcessosPage() {
   };
 
   const handleAIDeleteProcess = (data: { name: string }) => {
-    const process = processes.find(p => p.name.toLowerCase() === data.name.toLowerCase());
+    const process = processes.find((p) => p.name.toLowerCase() === data.name.toLowerCase());
     if (!process) {
       console.warn(`Process "${data.name}" not found for deletion`);
       return;
@@ -183,6 +339,17 @@ export default function ProcessosPage() {
     setDeleteConfirm(null);
   };
 
+  const handleDeleteColumn = (stage: string) => {
+    // Delete all processes in this stage
+    const stageProcesses = processes.filter((p) => p.stage === stage);
+    stageProcesses.forEach((p) => db.deleteProcess(p.id));
+
+    // Remove stage from list
+    setStages(stages.filter((s) => s !== stage));
+    loadData();
+    setDeleteColumnConfirm(null);
+  };
+
   const handleAddStage = () => {
     if (newStageName.trim() && !stages.includes(newStageName.trim())) {
       setStages([...stages, newStageName.trim()]);
@@ -201,16 +368,76 @@ export default function ProcessosPage() {
   };
 
   const getProcessesByStage = (stage: string) => {
-    return processes.filter((p) => p.stage === stage);
+    return processes.filter((p) => p.stage === stage).sort((a, b) => a.position - b.position);
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Check if we're dragging a card
+    const activeProcess = processes.find((p) => p.id === activeId);
+    if (!activeProcess) return;
+
+    // Check if over is a stage or a card
+    const overProcess = processes.find((p) => p.id === overId);
+    const overStage = stages.includes(overId) ? overId : overProcess?.stage;
+
+    if (!overStage) return;
+
+    // If the card is being moved to a different stage
+    if (activeProcess.stage !== overStage) {
+      db.updateProcess(activeProcess.id, { stage: overStage });
+      loadData();
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    const activeId = active.id as string;
+    const overId = over.id as string;
+
+    // Handle column reordering
+    if (stages.includes(activeId) && stages.includes(overId)) {
+      const oldIndex = stages.indexOf(activeId);
+      const newIndex = stages.indexOf(overId);
+      setStages(arrayMove(stages, oldIndex, newIndex));
+      return;
+    }
+
+    // Handle card reordering within the same stage
+    const activeProcess = processes.find((p) => p.id === activeId);
+    const overProcess = processes.find((p) => p.id === overId);
+
+    if (activeProcess && overProcess && activeProcess.stage === overProcess.stage) {
+      const stageProcesses = getProcessesByStage(activeProcess.stage);
+      const oldIndex = stageProcesses.findIndex((p) => p.id === activeId);
+      const newIndex = stageProcesses.findIndex((p) => p.id === overId);
+
+      const reordered = arrayMove(stageProcesses, oldIndex, newIndex);
+      reordered.forEach((p, index) => {
+        db.updateProcess(p.id, { position: index });
+      });
+
+      loadData();
+    }
   };
 
   return (
     <AppLayout
       rightSidebar={
-        <RightSidebar
-          selectedAreaId={selectedAreaId}
-          onSelectArea={setSelectedAreaId}
-        />
+        <RightSidebar selectedAreaId={selectedAreaId} onSelectArea={setSelectedAreaId} />
       }
     >
       <ResizableChatContainer
@@ -222,7 +449,8 @@ export default function ProcessosPage() {
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">Processos</h1>
                   {selectedArea && (
                     <p className="text-gray-600">
-                      Mapeamento de processos para: <span className="font-medium text-primary-700">{selectedArea.name}</span>
+                      Mapeamento de processos para:{' '}
+                      <span className="font-medium text-primary-700">{selectedArea.name}</span>
                     </p>
                   )}
                 </div>
@@ -246,64 +474,43 @@ export default function ProcessosPage() {
                 </div>
               ) : (
                 <div className="mb-8 overflow-x-auto">
-                  <div className="flex gap-4 min-w-max pb-4">
-                    {stages.map((stage) => {
-                      const stageProcesses = getProcessesByStage(stage);
-                      return (
-                        <div key={stage} className="w-80 flex-shrink-0">
-                          <div className="bg-gray-100 rounded-lg p-4">
-                            <div className="flex justify-between items-center mb-4">
-                              <h3 className="font-semibold text-gray-900 uppercase text-sm">
-                                {getStageLabel(stage)}
-                              </h3>
-                              <span className="bg-gray-200 text-gray-600 text-xs px-2 py-1 rounded-full">
-                                {stageProcesses.length}
-                              </span>
-                            </div>
-
-                            <div className="space-y-3">
-                              {stageProcesses.map((process) => (
-                                <div
-                                  key={process.id}
-                                  className="bg-white rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
-                                >
-                                  <div className="flex justify-between items-start mb-2">
-                                    <h4 className="font-medium text-gray-900 flex-1">
-                                      {process.name}
-                                    </h4>
-                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <button
-                                        onClick={() => handleOpenModal(process)}
-                                        className="text-primary-600 hover:text-primary-700 text-xs"
-                                      >
-                                        ✎
-                                      </button>
-                                      <button
-                                        onClick={() => setDeleteConfirm(process.id)}
-                                        className="text-red-600 hover:text-red-700 text-xs"
-                                      >
-                                        ×
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <p className="text-sm text-gray-600 line-clamp-2">
-                                    {process.description}
-                                  </p>
-                                </div>
-                              ))}
-
-                              <button
-                                onClick={() => handleOpenModal(undefined, stage)}
-                                className="w-full py-2 text-sm text-gray-500 hover:text-primary-700 hover:bg-white rounded-lg transition-colors"
-                              >
-                                + Adicionar atividade
-                              </button>
-                            </div>
-                          </div>
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCorners}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext items={stages} strategy={horizontalListSortingStrategy}>
+                      <div className="flex gap-4 min-w-max pb-4">
+                        {stages.map((stage) => {
+                          const stageProcesses = getProcessesByStage(stage);
+                          return (
+                            <SortableColumn
+                              key={stage}
+                              stage={stage}
+                              processes={stageProcesses}
+                              getStageLabel={getStageLabel}
+                              onAddActivity={(s) => handleOpenModal(undefined, s)}
+                              onEditProcess={handleOpenModal}
+                              onDeleteProcess={setDeleteConfirm}
+                              onDeleteColumn={(s) => setDeleteColumnConfirm(s)}
+                              isDefault={DEFAULT_STAGES.includes(stage)}
+                            />
+                          );
+                        })}
+                      </div>
+                    </SortableContext>
+                    <DragOverlay>
+                      {activeId && processes.find((p) => p.id === activeId) ? (
+                        <div className="bg-white rounded-lg p-4 shadow-lg opacity-90 w-80">
+                          <h4 className="font-medium text-gray-900">
+                            {processes.find((p) => p.id === activeId)?.name}
+                          </h4>
                         </div>
-                      );
-                    })}
-                  </div>
+                      ) : null}
+                    </DragOverlay>
+                  </DndContext>
                 </div>
               )}
             </div>
@@ -353,9 +560,7 @@ export default function ProcessosPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Descrição
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Descrição</label>
             <textarea
               value={processForm.description}
               onChange={(e) => setProcessForm({ ...processForm, description: e.target.value })}
@@ -365,9 +570,7 @@ export default function ProcessosPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Etapa
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Etapa</label>
             <select
               value={processForm.stage}
               onChange={(e) => setProcessForm({ ...processForm, stage: e.target.value })}
@@ -403,9 +606,7 @@ export default function ProcessosPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Nome da Coluna
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Nome da Coluna</label>
             <input
               type="text"
               value={newStageName}
@@ -435,6 +636,14 @@ export default function ProcessosPage() {
         onConfirm={() => deleteConfirm && handleDeleteProcess(deleteConfirm)}
         title="Excluir Atividade"
         message="Tem certeza que deseja excluir esta atividade? Esta ação não pode ser desfeita."
+      />
+
+      <ConfirmDialog
+        isOpen={deleteColumnConfirm !== null}
+        onClose={() => setDeleteColumnConfirm(null)}
+        onConfirm={() => deleteColumnConfirm && handleDeleteColumn(deleteColumnConfirm)}
+        title="Excluir Coluna"
+        message="Tem certeza que deseja excluir esta coluna? Todas as atividades nesta coluna serão deletadas. Esta ação não pode ser desfeita."
       />
     </AppLayout>
   );
