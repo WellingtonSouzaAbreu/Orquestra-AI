@@ -9,11 +9,18 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Organization, Pillar, ChatMessage } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import {
+  getOrganization,
+  setOrganization,
+  updateOrganization,
+  getChatHistory,
+  saveChatHistory,
+} from '@/lib/storage/qdrant';
+import { sendMessage } from '@/lib/ai/gemini';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
 
 export default function BasePage() {
-  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [organization, setOrganizationState] = useState<Organization | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPillar, setEditingPillar] = useState<Pillar | null>(null);
@@ -24,12 +31,39 @@ export default function BasePage() {
     loadData();
   }, []);
 
-  const loadData = () => {
-    const org = db.getOrganization();
-    setOrganization(org);
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant') {
+      sendProactiveMessage();
+    }
+  }, [messages]);
+
+  const sendProactiveMessage = async () => {
+    const proactiveMessage = "Olá! Vamos definir os pilares da sua organização. Sobre o que eles são?";
+    try {
+      const response = await sendMessage(proactiveMessage, { type: 'organization', currentPage: 'base' });
+      const newAiMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.message,
+        timestamp: getCurrentTimestamp(),
+      };
+      const updatedMessages = [...messages, newAiMessage];
+      setMessages(updatedMessages);
+      await saveChatHistory(updatedMessages, 'base');
+    } catch (error) {
+      console.error('Error sending proactive message:', error);
+    }
   };
 
-  const handleMessageSent = (
+  const loadData = async () => {
+    const org = await getOrganization();
+    setOrganizationState(org);
+    const chatHistory = await getChatHistory('base');
+    setMessages(chatHistory);
+  };
+
+  const handleMessageSent = async (
     userMessage: string,
     aiResponse: string,
     actions?: Array<{ type: string; data: any }>
@@ -49,23 +83,25 @@ export default function BasePage() {
       },
     ];
 
-    setMessages((prev) => [...prev, ...newMessages]);
+    const updatedMessages = [...messages, ...newMessages];
+    setMessages(updatedMessages);
+    await saveChatHistory(updatedMessages, 'base');
 
     // Handle AI actions to update the UI
     if (actions && actions.length > 0) {
-      actions.forEach((action) => {
+      for (const action of actions) {
         if (action.type === 'create_pillar') {
-          handleAICreatePillar(action.data);
+          await handleAICreatePillar(action.data);
         } else if (action.type === 'update_pillar') {
-          handleAIUpdatePillar(action.data);
+          await handleAIUpdatePillar(action.data);
         } else if (action.type === 'delete_pillar') {
-          handleAIDeletePillar(action.data);
+          await handleAIDeletePillar(action.data);
         }
-      });
+      }
     }
   };
 
-  const handleAICreatePillar = (data: { name: string; description: string }) => {
+  const handleAICreatePillar = async (data: { name: string; description: string }) => {
     if (!organization) {
       // Create organization if it doesn't exist
       const newOrg: Organization = {
@@ -83,7 +119,7 @@ export default function BasePage() {
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
       };
-      db.setOrganization(newOrg);
+      await setOrganization(newOrg);
     } else {
       // Add pillar to existing organization
       const newPillar: Pillar = {
@@ -93,12 +129,12 @@ export default function BasePage() {
         createdAt: getCurrentTimestamp(),
       };
       const pillars = organization.pillars || [];
-      db.updateOrganization({ pillars: [...pillars, newPillar] });
+      await updateOrganization({ pillars: [...pillars, newPillar] });
     }
-    loadData();
+    await loadData();
   };
 
-  const handleAIUpdatePillar = (data: { name: string; newName?: string; description?: string }) => {
+  const handleAIUpdatePillar = async (data: { name: string; newName?: string; description?: string }) => {
     if (!organization) return;
 
     const pillars = organization.pillars || [];
@@ -116,18 +152,18 @@ export default function BasePage() {
       description: data.description || updatedPillars[pillarIndex].description,
     };
 
-    db.updateOrganization({ pillars: updatedPillars });
-    loadData();
+    await updateOrganization({ pillars: updatedPillars });
+    await loadData();
   };
 
-  const handleAIDeletePillar = (data: { name: string }) => {
+  const handleAIDeletePillar = async (data: { name: string }) => {
     if (!organization) return;
 
     const pillars = organization.pillars || [];
     const filteredPillars = pillars.filter(p => p.name.toLowerCase() !== data.name.toLowerCase());
 
-    db.updateOrganization({ pillars: filteredPillars });
-    loadData();
+    await updateOrganization({ pillars: filteredPillars });
+    await loadData();
   };
 
   const handleOpenModal = (pillar?: Pillar) => {
@@ -147,7 +183,7 @@ export default function BasePage() {
     setPillarForm({ name: '', description: '' });
   };
 
-  const handleSavePillar = () => {
+  const handleSavePillar = async () => {
     if (!organization || !pillarForm.name.trim()) return;
 
     const pillars = organization.pillars || [];
@@ -159,7 +195,7 @@ export default function BasePage() {
           ? { ...p, name: pillarForm.name, description: pillarForm.description }
           : p
       );
-      db.updateOrganization({ pillars: updated });
+      await updateOrganization({ pillars: updated });
     } else {
       // Create new pillar
       const newPillar: Pillar = {
@@ -168,18 +204,18 @@ export default function BasePage() {
         description: pillarForm.description,
         createdAt: getCurrentTimestamp(),
       };
-      db.updateOrganization({ pillars: [...pillars, newPillar] });
+      await updateOrganization({ pillars: [...pillars, newPillar] });
     }
 
-    loadData();
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDeletePillar = (id: string) => {
+  const handleDeletePillar = async (id: string) => {
     if (!organization) return;
     const pillars = organization.pillars || [];
-    db.updateOrganization({ pillars: pillars.filter((p) => p.id !== id) });
-    loadData();
+    await updateOrganization({ pillars: pillars.filter((p) => p.id !== id) });
+    await loadData();
     setDeleteConfirm(null);
   };
 

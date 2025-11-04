@@ -6,7 +6,16 @@ import ResizableChatContainer from '@/components/chat/ResizableChatContainer';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatMessages from '@/components/chat/ChatMessages';
 import { ChatMessage } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import {
+  getChatHistory,
+  saveChatHistory,
+  clearChatHistory,
+  getAreas,
+  getKPIs,
+  getTasks,
+  getProcesses,
+} from '@/lib/storage/qdrant';
+import { sendMessage } from '@/lib/ai/gemini';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
 
 export default function ConversarPage() {
@@ -19,14 +28,44 @@ export default function ConversarPage() {
   });
 
   useEffect(() => {
-    loadStats();
+    const loadData = async () => {
+      await loadStats();
+      const chatHistory = await getChatHistory('conversar');
+      setMessages(chatHistory);
+    }
+    loadData();
   }, []);
 
-  const loadStats = () => {
-    const areas = db.getAreas();
-    const kpis = db.getKPIs();
-    const tasks = db.getTasks();
-    const processes = db.getProcesses();
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant') {
+      sendProactiveMessage();
+    }
+  }, [messages]);
+
+  const sendProactiveMessage = async () => {
+    const proactiveMessage = "Olá! Sobre o que você gostaria de conversar?";
+    try {
+      const response = await sendMessage(proactiveMessage, { type: 'general', currentPage: 'conversar' });
+      const newAiMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.message,
+        timestamp: getCurrentTimestamp(),
+      };
+      const updatedMessages = [...messages, newAiMessage];
+      setMessages(updatedMessages);
+      await saveChatHistory(updatedMessages, 'conversar');
+    } catch (error) {
+      console.error('Error sending proactive message:', error);
+    }
+  };
+
+  const loadStats = async () => {
+    const areas = await getAreas();
+    const kpis = await getKPIs();
+    const tasks = await getTasks();
+    const processes = await getProcesses();
 
     setStats({
       areas: areas.length,
@@ -36,7 +75,7 @@ export default function ConversarPage() {
     });
   };
 
-  const handleMessageSent = (userMessage: string, aiResponse: string) => {
+  const handleMessageSent = async (userMessage: string, aiResponse: string) => {
     const newMessages: ChatMessage[] = [
       {
         id: generateId(),
@@ -52,12 +91,15 @@ export default function ConversarPage() {
       },
     ];
 
-    setMessages((prev) => [...prev, ...newMessages]);
+    const updatedMessages = [...messages, ...newMessages];
+    setMessages(updatedMessages);
+    await saveChatHistory(updatedMessages, 'conversar');
   };
 
-  const handleClearHistory = () => {
+  const handleClearHistory = async () => {
     if (confirm('Tem certeza que deseja limpar o histórico de conversas?')) {
       setMessages([]);
+      await clearChatHistory('conversar');
     }
   };
 

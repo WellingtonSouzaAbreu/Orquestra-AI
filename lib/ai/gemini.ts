@@ -1,13 +1,33 @@
+'use server'
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AgentContext } from '../types';
-import { db } from '../storage/localStorage';
+import { AgentContext, KPI, Task, Process } from '../types';
+import {
+  getOrganization,
+  getAreas,
+  search,
+  getKPIs,
+  getTasks,
+  getProcesses,
+  getArea,
+} from '../storage/qdrant';
 import { buildFullPrompt } from '@/prompts/promptBuilder';
 import { actionSchema, type Action, type ChatResponse } from '@/prompts/schemas';
 import { ZodError } from 'zod';
 
 // Initialize Gemini AI
-const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
+const apiKey = process.env.GEMINI_API_KEY || '';
 const genAI = new GoogleGenerativeAI(apiKey);
+const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+
+export async function getEmbedding(text: string): Promise<number[]> {
+  if (!text || text.trim() === '') {
+    // Return a zero-vector if the text is empty
+    return Array(768).fill(0);
+  }
+  const result = await embeddingModel.embedContent(text);
+  return result.embedding.values;
+}
 
 // Re-export ChatResponse type for backward compatibility
 export type { ChatResponse };
@@ -17,7 +37,7 @@ function extractActions(text: string): Action[] {
   const actions: Action[] = [];
 
   // Match JSON blocks in the format ~~~json...~~~
-  const jsonMatches = text.matchAll(/~~~json\s*([\s\S]*?)\s*~~~/g);
+  const jsonMatches = text.matchAll(/~~~json\\s*([\\s\\S]*?)\\s*~~~/g);
 
   for (const match of jsonMatches) {
     let parsed: any = null;
@@ -77,7 +97,7 @@ export async function sendMessage(
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     // Build context information
-    const contextInfo = buildContextInfo(context);
+    const contextInfo = await buildContextInfo(context, message);
 
     // Build the full prompt using the new prompt builder
     const fullPrompt = buildFullPrompt({
@@ -95,7 +115,7 @@ export async function sendMessage(
     const actions = extractActions(text);
 
     // Remove action JSON from the message for cleaner display
-    const cleanMessage = text.replace(/~~~json[\s\S]*?~~~\s*/g, '').trim();
+    const cleanMessage = text.replace(/~~~json[\\s\\S]*?~~~\\s*/g, '').trim();
 
     // Map actions to the format expected by the rest of the app (backward compatibility)
     const mappedActions = actions.map(action => ({
@@ -115,98 +135,70 @@ export async function sendMessage(
   }
 }
 
-function buildContextInfo(context: AgentContext): string {
+async function buildContextInfo(context: AgentContext, message: string): Promise<string> {
   let info = '';
 
   // Add organization info
-  const org = db.getOrganization();
+  const org = await getOrganization();
   if (org) {
-    info += `Organization: ${org.name}\n`;
-    info += `Description: ${org.description}\n`;
-    if (org.website) info += `Website: ${org.website}\n`;
+    info += `Organization: ${org.name}\\n`;
+    info += `Description: ${org.description}\\n`;
+    if (org.website) info += `Website: ${org.website}\\n`;
     if (org.pillars && org.pillars.length > 0) {
-      info += `Pillars: ${org.pillars.map(p => p.name).join(', ')}\n`;
+      info += `Pillars: ${org.pillars.map(p => p.name).join(', ')}\\n`;
     }
-    info += '\n';
+    info += '\\n';
   }
 
   // Add areas
-  const areas = db.getAreas();
+  const areas = await getAreas();
   if (areas.length > 0) {
-    info += `Areas (${areas.length}):\n`;
+    info += `Areas (${areas.length}):\\n`;
     areas.forEach(area => {
-      info += `- ${area.name}: ${area.description}\n`;
+      info += `- ${area.name}: ${area.description}\\n`;
     });
-    info += '\n';
+    info += '\\n';
   }
 
-  // Add context-specific information
-  if (context.areaId) {
-    const area = db.getArea(context.areaId);
-    if (area) {
-      info += `Current Area: ${area.name}\n`;
-      info += `Area Description: ${area.description}\n\n`;
-
-      // Add KPIs for this area
-      const kpis = db.getKPIs(context.areaId);
-      if (kpis.length > 0) {
-        info += `KPIs in this area (${kpis.length}):\n`;
-        kpis.forEach(kpi => {
-          info += `- ${kpi.name}: ${kpi.description}\n`;
-        });
-        info += '\n';
-      }
-
-      // Add tasks for this area
-      const tasks = db.getTasks(context.areaId);
-      if (tasks.length > 0) {
-        info += `Tasks in this area (${tasks.length}):\n`;
-        tasks.forEach(task => {
-          info += `- ${task.name}: ${task.description}\n`;
-        });
-        info += '\n';
-      }
-
-      // Add processes for this area
-      const processes = db.getProcesses(context.areaId);
-      if (processes.length > 0) {
-        info += `Processes in this area (${processes.length}):\n`;
-        processes.forEach(process => {
-          info += `- ${process.name} (${process.stage}): ${process.description}\n`;
-        });
-        info += '\n';
-      }
-    }
+  // Add context-specific information using semantic search
+  const searchResults = await search(message, ['kpis', 'tasks', 'processes'], context.areaId);
+  if (searchResults.length > 0) {
+    info += 'Relevant items based on your message:\\n';
+    searchResults.forEach(item => {
+      const payload = item.payload as any;
+      info += `- ${payload.name}: ${payload.description}\\n`;
+    });
+    info += '\\n';
   }
 
   // For general agent, include all data with full details
   if (context.type === 'general') {
-    const allKPIs = db.getKPIs();
-    const allTasks = db.getTasks();
-    const allProcesses = db.getProcesses();
+    const allKPIs = await getKPIs();
+    const allTasks = await getTasks();
+    const allProcesses = await getProcesses();
 
     if (allKPIs.length > 0) {
-      info += `\nTodos os KPIs (${allKPIs.length}):\n`;
-      allKPIs.forEach(kpi => {
-        const area = db.getArea(kpi.areaId);
-        info += `- ${kpi.name} [Área: ${area?.name || 'N/A'}]: ${kpi.description}\n`;
-      });
+      info += `\\nTodos os KPIs (${allKPIs.length}):\\n`;
+      for (const kpi of allKPIs) {
+        const area = await getArea(kpi.areaId);
+        info += `- ${kpi.name} [Área: ${area?.name || 'N/A'}]: ${kpi.description}\\n`;
+      }
     }
 
     if (allTasks.length > 0) {
-      info += `\nTodas as Tarefas (${allTasks.length}):\n`;
-      allTasks.forEach(task => {
-        const area = db.getArea(task.areaId);
-        info += `- ${task.name} [Área: ${area?.name || 'N/A'}]: ${task.description}\n`;
-      });
+      info += `\\nTodas as Tarefas (${allTasks.length}):\\n`;
+      for (const task of allTasks) {
+        const area = await getArea(task.areaId);
+        info += `- ${task.name} [Área: ${area?.name || 'N/A'}]: ${task.description}\\n`;
+      }
     }
 
     if (allProcesses.length > 0) {
-      info += `\nTodos os Processos (${allProcesses.length}):\n`;
-      allProcesses.forEach(process => {
-        const area = db.getArea(process.areaId);
-        info += `- ${process.name} [Área: ${area?.name || 'N/A'}, Etapa: ${process.stage}]: ${process.description}\n`;
-      });
+      info += `\\nTodos os Processos (${allProcesses.length}):\\n`;
+      for (const process of allProcesses) {
+        const area = await getArea(process.areaId);
+        info += `- ${process.name} [Área: ${area?.name || 'N/A'}, Etapa: ${process.stage}]: ${process.description}\\n`;
+      }
     }
   }
 

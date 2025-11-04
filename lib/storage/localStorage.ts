@@ -22,197 +22,220 @@ class LocalStorageDatabase implements IDatabase {
   }
 
   // User operations
-  getUser(): User | null {
-    return this.getItem<User>('user');
+  async getUser(): Promise<User | null> {
+    return Promise.resolve(this.getItem<User>('user'));
   }
 
-  setUser(user: User): void {
+  async setUser(user: User): Promise<void> {
     this.setItem('user', user);
+    return Promise.resolve();
   }
 
   // Organization operations
-  getOrganization(): Organization | null {
-    return this.getItem<Organization>('organization');
+  async getOrganization(): Promise<Organization | null> {
+    return Promise.resolve(this.getItem<Organization>('organization'));
   }
 
-  setOrganization(org: Organization): void {
+  async setOrganization(org: Organization): Promise<void> {
     this.setItem('organization', org);
+    return Promise.resolve();
   }
 
-  updateOrganization(updates: Partial<Organization>): void {
-    const org = this.getOrganization();
+  async updateOrganization(updates: Partial<Organization>): Promise<void> {
+    const org = await this.getOrganization();
     if (org) {
       this.setOrganization({ ...org, ...updates, updatedAt: getCurrentTimestamp() });
     }
+    return Promise.resolve();
   }
 
   // Area operations
-  getAreas(): Area[] {
-    return this.getItem<Area[]>('areas') || [];
+  async getAreas(): Promise<Area[]> {
+    return Promise.resolve(this.getItem<Area[]>('areas') || []);
   }
 
-  getArea(id: string): Area | null {
-    const areas = this.getAreas();
-    return areas.find(area => area.id === id) || null;
+  async getArea(id: string): Promise<Area | null> {
+    const areas = await this.getAreas();
+    return Promise.resolve(areas.find(area => area.id === id) || null);
   }
 
-  createArea(area: Omit<Area, 'id' | 'createdAt' | 'updatedAt'>): Area {
+  async createArea(area: Omit<Area, 'id' | 'createdAt' | 'updatedAt'>): Promise<Area> {
     const newArea: Area = {
       ...area,
       id: generateId(),
       createdAt: getCurrentTimestamp(),
       updatedAt: getCurrentTimestamp(),
     };
-    const areas = this.getAreas();
+    const areas = await this.getAreas();
     this.setItem('areas', [...areas, newArea]);
-    return newArea;
+    return Promise.resolve(newArea);
   }
 
-  updateArea(id: string, updates: Partial<Area>): void {
-    const areas = this.getAreas();
+  async updateArea(id: string, updates: Partial<Area>): Promise<void> {
+    const areas = await this.getAreas();
     const index = areas.findIndex(area => area.id === id);
     if (index !== -1) {
       areas[index] = { ...areas[index], ...updates, updatedAt: getCurrentTimestamp() };
       this.setItem('areas', areas);
     }
+    return Promise.resolve();
   }
 
-  deleteArea(id: string): void {
-    const areas = this.getAreas();
+  async deleteArea(id: string): Promise<void> {
+    const areas = await this.getAreas();
     this.setItem('areas', areas.filter(area => area.id !== id));
+    return Promise.resolve();
   }
 
   // KPI operations
-  getKPIs(areaId?: string): KPI[] {
+  async getKPIs(areaId?: string): Promise<KPI[]> {
     const kpis = this.getItem<KPI[]>('kpis') || [];
-    return areaId ? kpis.filter(kpi => kpi.areaId === areaId) : kpis;
+    return Promise.resolve(areaId ? kpis.filter(kpi => kpi.areaId === areaId) : kpis);
   }
 
-  getKPI(id: string): KPI | null {
-    const kpis = this.getKPIs();
-    return kpis.find(kpi => kpi.id === id) || null;
+  async getKPI(id: string): Promise<KPI | null> {
+    const kpis = await this.getKPIs();
+    return Promise.resolve(kpis.find(kpi => kpi.id === id) || null);
   }
 
-  createKPI(kpi: Omit<KPI, 'id' | 'createdAt' | 'updatedAt'>): KPI {
+  async createKPI(kpi: Omit<KPI, 'id' | 'createdAt' | 'updatedAt'>): Promise<KPI> {
     const newKPI: KPI = {
       ...kpi,
       id: generateId(),
       createdAt: getCurrentTimestamp(),
       updatedAt: getCurrentTimestamp(),
     };
-    const kpis = this.getKPIs();
+    const kpis = await this.getKPIs();
     this.setItem('kpis', [...kpis, newKPI]);
-    return newKPI;
+    return Promise.resolve(newKPI);
   }
 
-  updateKPI(id: string, updates: Partial<KPI>): void {
-    const kpis = this.getKPIs();
+  async updateKPI(id: string, updates: Partial<KPI>): Promise<void> {
+    const kpis = await this.getKPIs();
     const index = kpis.findIndex(kpi => kpi.id === id);
     if (index !== -1) {
       kpis[index] = { ...kpis[index], ...updates, updatedAt: getCurrentTimestamp() };
       this.setItem('kpis', kpis);
     }
+    return Promise.resolve();
   }
 
-  deleteKPI(id: string): void {
-    const kpis = this.getKPIs();
+  async deleteKPI(id: string): Promise<void> {
+    const kpis = await this.getKPIs();
     this.setItem('kpis', kpis.filter(kpi => kpi.id !== id));
+    return Promise.resolve();
   }
 
   // Task operations
-  getTasks(areaId?: string): Task[] {
+  async getTasks(areaId?: string): Promise<Task[]> {
     const tasks = this.getItem<Task[]>('tasks') || [];
-    return areaId ? tasks.filter(task => task.areaId === areaId) : tasks;
+    return Promise.resolve(areaId ? tasks.filter(task => task.areaId === areaId) : tasks);
   }
 
-  getTask(id: string): Task | null {
-    const tasks = this.getTasks();
-    return tasks.find(task => task.id === id) || null;
+  async getTask(id: string): Promise<Task | null> {
+    const tasks = await this.getTasks();
+    return Promise.resolve(tasks.find(task => task.id === id) || null);
   }
 
-  createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Task {
+  async createTask(task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>): Promise<Task> {
     const newTask: Task = {
       ...task,
       id: generateId(),
       createdAt: getCurrentTimestamp(),
       updatedAt: getCurrentTimestamp(),
     };
-    const tasks = this.getTasks();
+    const tasks = await this.getTasks();
     this.setItem('tasks', [...tasks, newTask]);
-    return newTask;
+    return Promise.resolve(newTask);
   }
 
-  updateTask(id: string, updates: Partial<Task>): void {
-    const tasks = this.getTasks();
+  async updateTask(id: string, updates: Partial<Task>): Promise<void> {
+    const tasks = await this.getTasks();
     const index = tasks.findIndex(task => task.id === id);
     if (index !== -1) {
       tasks[index] = { ...tasks[index], ...updates, updatedAt: getCurrentTimestamp() };
       this.setItem('tasks', tasks);
     }
+    return Promise.resolve();
   }
 
-  deleteTask(id: string): void {
-    const tasks = this.getTasks();
+  async deleteTask(id: string): Promise<void> {
+    const tasks = await this.getTasks();
     this.setItem('tasks', tasks.filter(task => task.id !== id));
+    return Promise.resolve();
   }
 
   // Process operations
-  getProcesses(areaId?: string): Process[] {
+  async getProcesses(areaId?: string): Promise<Process[]> {
     const processes = this.getItem<Process[]>('processes') || [];
-    return areaId ? processes.filter(process => process.areaId === areaId) : processes;
+    return Promise.resolve(areaId ? processes.filter(process => process.areaId === areaId) : processes);
   }
 
-  getProcess(id: string): Process | null {
-    const processes = this.getProcesses();
-    return processes.find(process => process.id === id) || null;
+  async getProcess(id: string): Promise<Process | null> {
+    const processes = await this.getProcesses();
+    return Promise.resolve(processes.find(process => process.id === id) || null);
   }
 
-  createProcess(process: Omit<Process, 'id' | 'createdAt' | 'updatedAt'>): Process {
+  async createProcess(process: Omit<Process, 'id' | 'createdAt' | 'updatedAt'>): Promise<Process> {
     const newProcess: Process = {
       ...process,
       id: generateId(),
       createdAt: getCurrentTimestamp(),
       updatedAt: getCurrentTimestamp(),
     };
-    const processes = this.getProcesses();
+    const processes = await this.getProcesses();
     this.setItem('processes', [...processes, newProcess]);
-    return newProcess;
+    return Promise.resolve(newProcess);
   }
 
-  updateProcess(id: string, updates: Partial<Process>): void {
-    const processes = this.getProcesses();
+  async updateProcess(id: string, updates: Partial<Process>): Promise<void> {
+    const processes = await this.getProcesses();
     const index = processes.findIndex(process => process.id === id);
     if (index !== -1) {
       processes[index] = { ...processes[index], ...updates, updatedAt: getCurrentTimestamp() };
       this.setItem('processes', processes);
     }
+    return Promise.resolve();
   }
 
-  deleteProcess(id: string): void {
-    const processes = this.getProcesses();
+  async deleteProcess(id: string): Promise<void> {
+    const processes = await this.getProcesses();
     this.setItem('processes', processes.filter(process => process.id !== id));
+    return Promise.resolve();
   }
 
   // Chat operations
-  getChatHistory(page?: string): ChatMessage[] {
+  async getChatHistory(page?: string): Promise<ChatMessage[]> {
     const key = page ? `chat-${page}` : 'chat-general';
-    return this.getItem<ChatMessage[]>(key) || [];
+    return Promise.resolve(this.getItem<ChatMessage[]>(key) || []);
   }
 
-  addChatMessage(message: Omit<ChatMessage, 'id' | 'timestamp'>): void {
-    const key = 'chat-general';
-    const messages = this.getChatHistory();
+  async addChatMessage(message: Omit<ChatMessage, 'id' | 'timestamp'>, page?: string): Promise<void> {
+    const key = page ? `chat-${page}` : 'chat-general';
+    const messages = await this.getChatHistory(page);
     const newMessage: ChatMessage = {
       ...message,
       id: generateId(),
       timestamp: getCurrentTimestamp(),
     };
     this.setItem(key, [...messages, newMessage]);
+    return Promise.resolve();
   }
 
-  clearChatHistory(page?: string): void {
+  async saveChatHistory(messages: ChatMessage[], page?: string): Promise<void> {
+    const key = page ? `chat-${page}` : 'chat-general';
+    this.setItem(key, messages);
+    return Promise.resolve();
+  }
+
+  async clearChatHistory(page?: string): Promise<void> {
     const key = page ? `chat-${page}` : 'chat-general';
     this.setItem(key, []);
+    return Promise.resolve();
+  }
+
+  async search(query: string, collections: string[], areaId?: string, limit?: number): Promise<any[]> {
+    return Promise.resolve([]);
   }
 }
 

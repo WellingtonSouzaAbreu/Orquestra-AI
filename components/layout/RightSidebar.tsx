@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Area } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import { getAreas } from '@/lib/storage/qdrant';
 import { cn } from '@/lib/utils';
 
 interface RightSidebarProps {
@@ -21,8 +21,8 @@ export default function RightSidebar({ selectedAreaId, onSelectArea }: RightSide
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  const loadAreas = () => {
-    const loadedAreas = db.getAreas();
+  const loadAreas = async () => {
+    const loadedAreas = await getAreas();
     setAreas(loadedAreas);
 
     // Auto-select first area if none selected

@@ -9,7 +9,15 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Area, ChatMessage } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import {
+  getAreas,
+  getChatHistory,
+  saveChatHistory,
+  createArea,
+  updateArea,
+  deleteArea,
+} from '@/lib/storage/qdrant';
+import { sendMessage } from '@/lib/ai/gemini';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
 
 export default function AreasPage() {
@@ -24,12 +32,39 @@ export default function AreasPage() {
     loadData();
   }, []);
 
-  const loadData = () => {
-    const loadedAreas = db.getAreas();
-    setAreas(loadedAreas);
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant') {
+      sendProactiveMessage();
+    }
+  }, [messages]);
+
+  const sendProactiveMessage = async () => {
+    const proactiveMessage = "Olá! Vamos gerenciar as áreas da sua organização. Qual área você gostaria de adicionar ou modificar?";
+    try {
+      const response = await sendMessage(proactiveMessage, { type: 'organization', currentPage: 'areas' });
+      const newAiMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.message,
+        timestamp: getCurrentTimestamp(),
+      };
+      const updatedMessages = [...messages, newAiMessage];
+      setMessages(updatedMessages);
+      await saveChatHistory(updatedMessages, 'areas');
+    } catch (error) {
+      console.error('Error sending proactive message:', error);
+    }
   };
 
-  const handleMessageSent = (
+  const loadData = async () => {
+    const loadedAreas = await getAreas();
+    setAreas(loadedAreas);
+    const chatHistory = await getChatHistory('areas');
+    setMessages(chatHistory);
+  };
+
+  const handleMessageSent = async (
     userMessage: string,
     aiResponse: string,
     actions?: Array<{ type: string; data: any }>
@@ -49,53 +84,55 @@ export default function AreasPage() {
       },
     ];
 
-    setMessages((prev) => [...prev, ...newMessages]);
+    const updatedMessages = [...messages, ...newMessages];
+    setMessages(updatedMessages);
+    await saveChatHistory(updatedMessages, 'areas');
 
     // Handle AI actions to update the UI
     if (actions && actions.length > 0) {
-      actions.forEach((action) => {
+      for (const action of actions) {
         if (action.type === 'create_area') {
-          handleAICreateArea(action.data);
+          await handleAICreateArea(action.data);
         } else if (action.type === 'update_area') {
-          handleAIUpdateArea(action.data);
+          await handleAIUpdateArea(action.data);
         } else if (action.type === 'delete_area') {
-          handleAIDeleteArea(action.data);
+          await handleAIDeleteArea(action.data);
         }
-      });
+      }
     }
   };
 
-  const handleAICreateArea = (data: { name: string; description: string }) => {
-    db.createArea({
+  const handleAICreateArea = async (data: { name: string; description: string }) => {
+    await createArea({
       name: data.name,
       description: data.description,
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIUpdateArea = (data: { name: string; newName?: string; description?: string }) => {
+  const handleAIUpdateArea = async (data: { name: string; newName?: string; description?: string }) => {
     const area = areas.find(a => a.name.toLowerCase() === data.name.toLowerCase());
     if (!area) {
       console.warn(`Area "${data.name}" not found for update`);
       return;
     }
 
-    db.updateArea(area.id, {
+    await updateArea(area.id, {
       name: data.newName || area.name,
       description: data.description || area.description,
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIDeleteArea = (data: { name: string }) => {
+  const handleAIDeleteArea = async (data: { name: string }) => {
     const area = areas.find(a => a.name.toLowerCase() === data.name.toLowerCase());
     if (!area) {
       console.warn(`Area "${data.name}" not found for deletion`);
       return;
     }
 
-    db.deleteArea(area.id);
-    loadData();
+    await deleteArea(area.id);
+    await loadData();
   };
 
   const handleOpenModal = (area?: Area) => {
@@ -115,28 +152,28 @@ export default function AreasPage() {
     setAreaForm({ name: '', description: '' });
   };
 
-  const handleSaveArea = () => {
+  const handleSaveArea = async () => {
     if (!areaForm.name.trim()) return;
 
     if (editingArea) {
-      db.updateArea(editingArea.id, {
+      await updateArea(editingArea.id, {
         name: areaForm.name,
         description: areaForm.description,
       });
     } else {
-      db.createArea({
+      await createArea({
         name: areaForm.name,
         description: areaForm.description,
       });
     }
 
-    loadData();
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDeleteArea = (id: string) => {
-    db.deleteArea(id);
-    loadData();
+  const handleDeleteArea = async (id: string) => {
+    await deleteArea(id);
+    await loadData();
     setDeleteConfirm(null);
   };
 

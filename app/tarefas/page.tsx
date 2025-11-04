@@ -10,7 +10,16 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Task, ChatMessage, Area } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import {
+  getArea,
+  getTasks,
+  getChatHistory,
+  saveChatHistory,
+  createTask,
+  updateTask,
+  deleteTask,
+} from '@/lib/storage/qdrant';
+import { sendMessage } from '@/lib/ai/gemini';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
 
 export default function TarefasPage() {
@@ -29,14 +38,41 @@ export default function TarefasPage() {
     }
   }, [selectedAreaId]);
 
-  const loadData = () => {
-    const area = db.getArea(selectedAreaId);
-    setSelectedArea(area);
-    const loadedTasks = db.getTasks(selectedAreaId);
-    setTasks(loadedTasks);
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (selectedAreaId && (!lastMessage || lastMessage.role !== 'assistant')) {
+      sendProactiveMessage();
+    }
+  }, [messages, selectedAreaId]);
+
+  const sendProactiveMessage = async () => {
+    const proactiveMessage = "Olá! Vamos gerenciar as tarefas. O que precisa ser feito?";
+    try {
+      const response = await sendMessage(proactiveMessage, { type: 'task', areaId: selectedAreaId, currentPage: 'tarefas' });
+      const newAiMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.message,
+        timestamp: getCurrentTimestamp(),
+      };
+      const updatedMessages = [...messages, newAiMessage];
+      setMessages(updatedMessages);
+      await saveChatHistory(updatedMessages, `tarefas-${selectedAreaId}`);
+    } catch (error) {
+      console.error('Error sending proactive message:', error);
+    }
   };
 
-  const handleMessageSent = (
+  const loadData = async () => {
+    const area = await getArea(selectedAreaId);
+    setSelectedArea(area);
+    const loadedTasks = await getTasks(selectedAreaId);
+    setTasks(loadedTasks);
+    const chatHistory = await getChatHistory(`tarefas-${selectedAreaId}`);
+    setMessages(chatHistory);
+  };
+
+  const handleMessageSent = async (
     userMessage: string,
     aiResponse: string,
     actions?: Array<{ type: string; data: any }>
@@ -56,56 +92,58 @@ export default function TarefasPage() {
       },
     ];
 
-    setMessages((prev) => [...prev, ...newMessages]);
+    const updatedMessages = [...messages, ...newMessages];
+    setMessages(updatedMessages);
+    await saveChatHistory(updatedMessages, `tarefas-${selectedAreaId}`);
 
     // Handle AI actions to update the UI
     if (actions && actions.length > 0 && selectedAreaId) {
-      actions.forEach((action) => {
+      for (const action of actions) {
         if (action.type === 'create_task') {
-          handleAICreateTask(action.data);
+          await handleAICreateTask(action.data);
         } else if (action.type === 'update_task') {
-          handleAIUpdateTask(action.data);
+          await handleAIUpdateTask(action.data);
         } else if (action.type === 'delete_task') {
-          handleAIDeleteTask(action.data);
+          await handleAIDeleteTask(action.data);
         }
-      });
+      }
     }
   };
 
-  const handleAICreateTask = (data: { name: string; description: string }) => {
+  const handleAICreateTask = async (data: { name: string; description: string }) => {
     if (!selectedAreaId) return;
 
-    db.createTask({
+    await createTask({
       areaId: selectedAreaId,
       name: data.name,
       description: data.description,
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIUpdateTask = (data: { name: string; newName?: string; description?: string }) => {
+  const handleAIUpdateTask = async (data: { name: string; newName?: string; description?: string }) => {
     const task = tasks.find(t => t.name.toLowerCase() === data.name.toLowerCase());
     if (!task) {
       console.warn(`Task "${data.name}" not found for update`);
       return;
     }
 
-    db.updateTask(task.id, {
+    await updateTask(task.id, {
       name: data.newName || task.name,
       description: data.description || task.description,
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIDeleteTask = (data: { name: string }) => {
+  const handleAIDeleteTask = async (data: { name: string }) => {
     const task = tasks.find(t => t.name.toLowerCase() === data.name.toLowerCase());
     if (!task) {
       console.warn(`Task "${data.name}" not found for deletion`);
       return;
     }
 
-    db.deleteTask(task.id);
-    loadData();
+    await deleteTask(task.id);
+    await loadData();
   };
 
   const handleOpenModal = (task?: Task) => {
@@ -125,29 +163,29 @@ export default function TarefasPage() {
     setTaskForm({ name: '', description: '' });
   };
 
-  const handleSaveTask = () => {
+  const handleSaveTask = async () => {
     if (!taskForm.name.trim() || !selectedAreaId) return;
 
     if (editingTask) {
-      db.updateTask(editingTask.id, {
+      await updateTask(editingTask.id, {
         name: taskForm.name,
         description: taskForm.description,
       });
     } else {
-      db.createTask({
+      await createTask({
         areaId: selectedAreaId,
         name: taskForm.name,
         description: taskForm.description,
       });
     }
 
-    loadData();
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDeleteTask = (id: string) => {
-    db.deleteTask(id);
-    loadData();
+  const handleDeleteTask = async (id: string) => {
+    await deleteTask(id);
+    await loadData();
     setDeleteConfirm(null);
   };
 

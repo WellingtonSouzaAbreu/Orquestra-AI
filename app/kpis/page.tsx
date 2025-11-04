@@ -10,7 +10,16 @@ import Card from '@/components/ui/Card';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { KPI, ChatMessage, Area } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import {
+  getArea,
+  getKPIs,
+  getChatHistory,
+  saveChatHistory,
+  createKPI,
+  updateKPI,
+  deleteKPI,
+} from '@/lib/storage/qdrant';
+import { sendMessage } from '@/lib/ai/gemini';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
 
 export default function KPIsPage() {
@@ -29,14 +38,41 @@ export default function KPIsPage() {
     }
   }, [selectedAreaId]);
 
-  const loadData = () => {
-    const area = db.getArea(selectedAreaId);
-    setSelectedArea(area);
-    const loadedKPIs = db.getKPIs(selectedAreaId);
-    setKpis(loadedKPIs);
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (selectedAreaId && (!lastMessage || lastMessage.role !== 'assistant')) {
+      sendProactiveMessage();
+    }
+  }, [messages, selectedAreaId]);
+
+  const sendProactiveMessage = async () => {
+    const proactiveMessage = "Olá! Estou pronto para ajudar com os KPIs. O que você gostaria de fazer?";
+    try {
+      const response = await sendMessage(proactiveMessage, { type: 'kpi', areaId: selectedAreaId, currentPage: 'kpis' });
+      const newAiMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.message,
+        timestamp: getCurrentTimestamp(),
+      };
+      const updatedMessages = [...messages, newAiMessage];
+      setMessages(updatedMessages);
+      await saveChatHistory(updatedMessages, `kpis-${selectedAreaId}`);
+    } catch (error) {
+      console.error('Error sending proactive message:', error);
+    }
   };
 
-  const handleMessageSent = (
+  const loadData = async () => {
+    const area = await getArea(selectedAreaId);
+    setSelectedArea(area);
+    const loadedKPIs = await getKPIs(selectedAreaId);
+    setKpis(loadedKPIs);
+    const chatHistory = await getChatHistory(`kpis-${selectedAreaId}`);
+    setMessages(chatHistory);
+  };
+
+  const handleMessageSent = async (
     userMessage: string,
     aiResponse: string,
     actions?: Array<{ type: string; data: any }>
@@ -56,56 +92,58 @@ export default function KPIsPage() {
       },
     ];
 
-    setMessages((prev) => [...prev, ...newMessages]);
+    const updatedMessages = [...messages, ...newMessages];
+    setMessages(updatedMessages);
+    await saveChatHistory(updatedMessages, `kpis-${selectedAreaId}`);
 
     // Handle AI actions to update the UI
     if (actions && actions.length > 0 && selectedAreaId) {
-      actions.forEach((action) => {
+      for (const action of actions) {
         if (action.type === 'create_kpi') {
-          handleAICreateKPI(action.data);
+          await handleAICreateKPI(action.data);
         } else if (action.type === 'update_kpi') {
-          handleAIUpdateKPI(action.data);
+          await handleAIUpdateKPI(action.data);
         } else if (action.type === 'delete_kpi') {
-          handleAIDeleteKPI(action.data);
+          await handleAIDeleteKPI(action.data);
         }
-      });
+      }
     }
   };
 
-  const handleAICreateKPI = (data: { name: string; description: string }) => {
+  const handleAICreateKPI = async (data: { name: string; description: string }) => {
     if (!selectedAreaId) return;
 
-    db.createKPI({
+    await createKPI({
       areaId: selectedAreaId,
       name: data.name,
       description: data.description,
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIUpdateKPI = (data: { name: string; newName?: string; description?: string }) => {
+  const handleAIUpdateKPI = async (data: { name: string; newName?: string; description?: string }) => {
     const kpi = kpis.find(k => k.name.toLowerCase() === data.name.toLowerCase());
     if (!kpi) {
       console.warn(`KPI "${data.name}" not found for update`);
       return;
     }
 
-    db.updateKPI(kpi.id, {
+    await updateKPI(kpi.id, {
       name: data.newName || kpi.name,
       description: data.description || kpi.description,
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIDeleteKPI = (data: { name: string }) => {
+  const handleAIDeleteKPI = async (data: { name: string }) => {
     const kpi = kpis.find(k => k.name.toLowerCase() === data.name.toLowerCase());
     if (!kpi) {
       console.warn(`KPI "${data.name}" not found for deletion`);
       return;
     }
 
-    db.deleteKPI(kpi.id);
-    loadData();
+    await deleteKPI(kpi.id);
+    await loadData();
   };
 
   const handleOpenModal = (kpi?: KPI) => {
@@ -125,29 +163,29 @@ export default function KPIsPage() {
     setKpiForm({ name: '', description: '' });
   };
 
-  const handleSaveKPI = () => {
+  const handleSaveKPI = async () => {
     if (!kpiForm.name.trim() || !selectedAreaId) return;
 
     if (editingKPI) {
-      db.updateKPI(editingKPI.id, {
+      await updateKPI(editingKPI.id, {
         name: kpiForm.name,
         description: kpiForm.description,
       });
     } else {
-      db.createKPI({
+      await createKPI({
         areaId: selectedAreaId,
         name: kpiForm.name,
         description: kpiForm.description,
       });
     }
 
-    loadData();
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDeleteKPI = (id: string) => {
-    db.deleteKPI(id);
-    loadData();
+  const handleDeleteKPI = async (id: string) => {
+    await deleteKPI(id);
+    await loadData();
     setDeleteConfirm(null);
   };
 

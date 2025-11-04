@@ -6,23 +6,57 @@ import ResizableChatContainer from '@/components/chat/ResizableChatContainer';
 import ChatInput from '@/components/chat/ChatInput';
 import ChatMessages from '@/components/chat/ChatMessages';
 import { Organization, ChatMessage } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import {
+  getOrganization,
+  setOrganization,
+  getChatHistory,
+  saveChatHistory,
+} from '@/lib/storage/qdrant';
+import { sendMessage } from '@/lib/ai/gemini';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
 
 export default function InicioPage() {
-  const [organization, setOrganization] = useState<Organization | null>(null);
+  const [organization, setOrganizationState] = useState<Organization | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const loadData = () => {
-    const org = db.getOrganization();
-    setOrganization(org);
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant') {
+      sendProactiveMessage();
+    }
+  }, [messages]);
+
+  const sendProactiveMessage = async () => {
+    const proactiveMessage = "Olá! Como posso ajudar a configurar sua organização hoje?";
+    try {
+      const response = await sendMessage(proactiveMessage, { type: 'organization', currentPage: 'inicio' });
+      const newAiMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.message,
+        timestamp: getCurrentTimestamp(),
+      };
+      const updatedMessages = [...messages, newAiMessage];
+      setMessages(updatedMessages);
+      await saveChatHistory(updatedMessages, 'inicio');
+    } catch (error) {
+      console.error('Error sending proactive message:', error);
+    }
   };
 
-  const handleMessageSent = (
+
+  const loadData = async () => {
+    const org = await getOrganization();
+    setOrganizationState(org);
+    const chatHistory = await getChatHistory('inicio');
+    setMessages(chatHistory);
+  };
+
+  const handleMessageSent = async (
     userMessage: string,
     aiResponse: string,
     actions?: Array<{ type: string; data: any }>
@@ -42,19 +76,21 @@ export default function InicioPage() {
       },
     ];
 
-    setMessages((prev) => [...prev, ...newMessages]);
+    const updatedMessages = [...messages, ...newMessages];
+    setMessages(updatedMessages);
+    await saveChatHistory(updatedMessages, 'inicio');
 
     // Handle AI actions to update the UI
     if (actions && actions.length > 0) {
-      actions.forEach((action) => {
+      for (const action of actions) {
         if (action.type === 'update_organization') {
-          handleAIUpdate(action.data);
+          await handleAIUpdate(action.data);
         }
-      });
+      }
     }
   };
 
-  const handleAIUpdate = (data: Partial<Organization>) => {
+  const handleAIUpdate = async (data: Partial<Organization>) => {
     // Ensure organization exists
     if (!organization) {
       const newOrg: Organization = {
@@ -67,8 +103,8 @@ export default function InicioPage() {
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
       };
-      db.setOrganization(newOrg);
-      setOrganization(newOrg);
+      await setOrganization(newOrg);
+      setOrganizationState(newOrg);
     } else {
       // Update existing organization with new data
       const updated = {
@@ -76,12 +112,12 @@ export default function InicioPage() {
         ...data,
         updatedAt: getCurrentTimestamp(),
       };
-      db.setOrganization(updated);
-      setOrganization(updated);
+      await setOrganization(updated);
+      setOrganizationState(updated);
     }
   };
 
-  const handleCreateOrganization = () => {
+  const handleCreateOrganization = async () => {
     if (!organization) {
       const newOrg: Organization = {
         id: generateId(),
@@ -93,16 +129,16 @@ export default function InicioPage() {
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
       };
-      db.setOrganization(newOrg);
-      setOrganization(newOrg);
+      await setOrganization(newOrg);
+      setOrganizationState(newOrg);
     }
   };
 
-  const handleUpdateField = (field: keyof Organization, value: string) => {
+  const handleUpdateField = async (field: keyof Organization, value: string) => {
     if (organization) {
       const updated = { ...organization, [field]: value };
-      db.setOrganization(updated);
-      setOrganization(updated);
+      await setOrganization(updated);
+      setOrganizationState(updated);
     }
   };
 

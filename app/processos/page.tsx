@@ -28,7 +28,16 @@ import ChatMessages from '@/components/chat/ChatMessages';
 import Modal from '@/components/ui/Modal';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Process, ChatMessage, Area } from '@/lib/types';
-import { db } from '@/lib/storage/localStorage';
+import {
+  getArea,
+  getProcesses,
+  getChatHistory,
+  saveChatHistory,
+  createProcess,
+  updateProcess,
+  deleteProcess,
+} from '@/lib/storage/qdrant';
+import { sendMessage } from '@/lib/ai/gemini';
 import { generateId, getCurrentTimestamp } from '@/lib/storage/database';
 
 const DEFAULT_STAGES = ['planning', 'execution', 'delivery'];
@@ -190,10 +199,35 @@ export default function ProcessosPage() {
     }
   }, [selectedAreaId]);
 
-  const loadData = () => {
-    const area = db.getArea(selectedAreaId);
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (selectedAreaId && (!lastMessage || lastMessage.role !== 'assistant')) {
+      sendProactiveMessage();
+    }
+  }, [messages, selectedAreaId]);
+
+  const sendProactiveMessage = async () => {
+    const proactiveMessage = "Olá! Vamos mapear os processos. Qual processo você gostaria de criar ou ajustar?";
+    try {
+      const response = await sendMessage(proactiveMessage, { type: 'process', areaId: selectedAreaId, currentPage: 'processos' });
+      const newAiMessage: ChatMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.message,
+        timestamp: getCurrentTimestamp(),
+      };
+      const updatedMessages = [...messages, newAiMessage];
+      setMessages(updatedMessages);
+      await saveChatHistory(updatedMessages, `processos-${selectedAreaId}`);
+    } catch (error) {
+      console.error('Error sending proactive message:', error);
+    }
+  };
+
+  const loadData = async () => {
+    const area = await getArea(selectedAreaId);
     setSelectedArea(area);
-    const loadedProcesses = db.getProcesses(selectedAreaId);
+    const loadedProcesses = await getProcesses(selectedAreaId);
     setProcesses(loadedProcesses);
 
     // Extract custom stages
@@ -204,9 +238,11 @@ export default function ProcessosPage() {
       }
     });
     setStages(Array.from(customStages));
+    const chatHistory = await getChatHistory(`processos-${selectedAreaId}`);
+    setMessages(chatHistory);
   };
 
-  const handleMessageSent = (
+  const handleMessageSent = async (
     userMessage: string,
     aiResponse: string,
     actions?: Array<{ type: string; data: any }>
@@ -226,27 +262,29 @@ export default function ProcessosPage() {
       },
     ];
 
-    setMessages((prev) => [...prev, ...newMessages]);
+    const updatedMessages = [...messages, ...newMessages];
+    setMessages(updatedMessages);
+    await saveChatHistory(updatedMessages, `processos-${selectedAreaId}`);
 
     // Handle AI actions to update the UI
     if (actions && actions.length > 0 && selectedAreaId) {
-      actions.forEach((action) => {
+      for (const action of actions) {
         if (action.type === 'create_process') {
-          handleAICreateProcess(action.data);
+          await handleAICreateProcess(action.data);
         } else if (action.type === 'update_process') {
-          handleAIUpdateProcess(action.data);
+          await handleAIUpdateProcess(action.data);
         } else if (action.type === 'delete_process') {
-          handleAIDeleteProcess(action.data);
+          await handleAIDeleteProcess(action.data);
         }
-      });
+      }
     }
   };
 
-  const handleAICreateProcess = (data: { name: string; description: string; stage: string }) => {
+  const handleAICreateProcess = async (data: { name: string; description: string; stage: string }) => {
     if (!selectedAreaId) return;
 
     const stageProcesses = processes.filter((p) => p.stage === data.stage);
-    db.createProcess({
+    await createProcess({
       areaId: selectedAreaId,
       name: data.name,
       description: data.description,
@@ -254,33 +292,33 @@ export default function ProcessosPage() {
       position: stageProcesses.length,
       connections: [],
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIUpdateProcess = (data: { name: string; newName?: string; description?: string; stage?: string }) => {
+  const handleAIUpdateProcess = async (data: { name: string; newName?: string; description?: string; stage?: string }) => {
     const process = processes.find((p) => p.name.toLowerCase() === data.name.toLowerCase());
     if (!process) {
       console.warn(`Process "${data.name}" not found for update`);
       return;
     }
 
-    db.updateProcess(process.id, {
+    await updateProcess(process.id, {
       name: data.newName || process.name,
       description: data.description || process.description,
       stage: data.stage || process.stage,
     });
-    loadData();
+    await loadData();
   };
 
-  const handleAIDeleteProcess = (data: { name: string }) => {
+  const handleAIDeleteProcess = async (data: { name: string }) => {
     const process = processes.find((p) => p.name.toLowerCase() === data.name.toLowerCase());
     if (!process) {
       console.warn(`Process "${data.name}" not found for deletion`);
       return;
     }
 
-    db.deleteProcess(process.id);
-    loadData();
+    await deleteProcess(process.id);
+    await loadData();
   };
 
   const handleOpenModal = (process?: Process, defaultStage?: string) => {
@@ -308,18 +346,18 @@ export default function ProcessosPage() {
     setProcessForm({ name: '', description: '', stage: 'planning' });
   };
 
-  const handleSaveProcess = () => {
+  const handleSaveProcess = async () => {
     if (!processForm.name.trim() || !selectedAreaId) return;
 
     if (editingProcess) {
-      db.updateProcess(editingProcess.id, {
+      await updateProcess(editingProcess.id, {
         name: processForm.name,
         description: processForm.description,
         stage: processForm.stage,
       });
     } else {
       const stageProcesses = processes.filter((p) => p.stage === processForm.stage);
-      db.createProcess({
+      await createProcess({
         areaId: selectedAreaId,
         name: processForm.name,
         description: processForm.description,
@@ -329,24 +367,26 @@ export default function ProcessosPage() {
       });
     }
 
-    loadData();
+    await loadData();
     handleCloseModal();
   };
 
-  const handleDeleteProcess = (id: string) => {
-    db.deleteProcess(id);
-    loadData();
+  const handleDeleteProcess = async (id: string) => {
+    await deleteProcess(id);
+    await loadData();
     setDeleteConfirm(null);
   };
 
-  const handleDeleteColumn = (stage: string) => {
+  const handleDeleteColumn = async (stage: string) => {
     // Delete all processes in this stage
     const stageProcesses = processes.filter((p) => p.stage === stage);
-    stageProcesses.forEach((p) => db.deleteProcess(p.id));
+    for (const p of stageProcesses) {
+      await deleteProcess(p.id);
+    }
 
     // Remove stage from list
     setStages(stages.filter((s) => s !== stage));
-    loadData();
+    await loadData();
     setDeleteColumnConfirm(null);
   };
 
@@ -394,7 +434,7 @@ export default function ProcessosPage() {
 
     // If the card is being moved to a different stage
     if (activeProcess.stage !== overStage) {
-      db.updateProcess(activeProcess.id, { stage: overStage });
+      updateProcess(activeProcess.id, { stage: overStage });
       loadData();
     }
   };
@@ -427,7 +467,7 @@ export default function ProcessosPage() {
 
       const reordered = arrayMove(stageProcesses, oldIndex, newIndex);
       reordered.forEach((p, index) => {
-        db.updateProcess(p.id, { position: index });
+        updateProcess(p.id, { position: index });
       });
 
       loadData();
