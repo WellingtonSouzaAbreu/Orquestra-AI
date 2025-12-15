@@ -30,6 +30,12 @@ export default function InicioPage() {
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (organization) {
+      setOrganization(organization);
+    }
+  }, [organization]);
+
   const sendProactiveMessage = async () => {
     const proactiveMessage = "Olá! Como posso ajudar a configurar sua organização hoje?";
     try {
@@ -90,7 +96,7 @@ export default function InicioPage() {
     }
   };
 
-  const handleAIUpdate = async (data: Partial<Organization>) => {
+  const handleAIUpdate = (data: Partial<Organization>) => {
     // Ensure organization exists
     if (!organization) {
       const newOrg: Organization = {
@@ -103,7 +109,6 @@ export default function InicioPage() {
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
       };
-      await setOrganization(newOrg);
       setOrganizationState(newOrg);
     } else {
       // Update existing organization with new data
@@ -112,12 +117,11 @@ export default function InicioPage() {
         ...data,
         updatedAt: getCurrentTimestamp(),
       };
-      await setOrganization(updated);
       setOrganizationState(updated);
     }
   };
 
-  const handleCreateOrganization = async () => {
+  const handleCreateOrganization = () => {
     if (!organization) {
       const newOrg: Organization = {
         id: generateId(),
@@ -129,15 +133,13 @@ export default function InicioPage() {
         createdAt: getCurrentTimestamp(),
         updatedAt: getCurrentTimestamp(),
       };
-      await setOrganization(newOrg);
       setOrganizationState(newOrg);
     }
   };
 
-  const handleUpdateField = async (field: keyof Organization, value: string) => {
+  const handleUpdateField = (field: keyof Organization, value: string) => {
     if (organization) {
       const updated = { ...organization, [field]: value };
-      await setOrganization(updated);
       setOrganizationState(updated);
     }
   };

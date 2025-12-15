@@ -4,7 +4,7 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 import { IDatabase } from './database';
 import { getEmbedding } from '../ai/gemini';
 import { Area, KPI, Task, Process, Organization, ChatMessage, User } from '../types';
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4, v5 as uuidv5 } from 'uuid';
 
 class QdrantDatabase implements IDatabase {
   private client: QdrantClient;
@@ -19,18 +19,21 @@ class QdrantDatabase implements IDatabase {
   }
 
   private async initCollections() {
-    await this.client.getCollections(); // Check connection
+    const coll = await this.client.getCollections(); // Check connection
+    console.log(coll)
     const collections = ['areas', 'kpis', 'tasks', 'processes', 'chat_history', 'metadata'];
     const { collections: existingCollections } = await this.client.getCollections();
     const existingCollectionNames = new Set(existingCollections.map(c => c.name));
 
     for (const collection of collections) {
-      await this.client.recreateCollection(collection, {
-        vectors: {
-          size: 768, // Vector size for text-embedding-004
-          distance: 'Cosine'
-        }
-      });
+      if (!existingCollectionNames.has(collection)) {
+        await this.client.createCollection(collection, {
+          vectors: {
+            size: 768, // Vector size for text-embedding-004
+            distance: 'Cosine'
+          }
+        });
+      }
     }
   }
 
@@ -39,25 +42,29 @@ class QdrantDatabase implements IDatabase {
   }
 
   async getUser(): Promise<User | null> {
-    const response = await this.client.retrieve('metadata', { ids: ['user'], with_payload: true });
+    const userId = uuidv5('user', uuidv5.DNS);
+    const response = await this.client.retrieve('metadata', { ids: [userId], with_payload: true });
     return response[0]?.payload as unknown as User | null;
   }
 
   async setUser(user: User): Promise<void> {
+    const userId = uuidv5('user', uuidv5.DNS);
     await this.client.upsert('metadata', {
-      points: [{ id: 'user', vector: await getEmbedding(user.nickname), payload: user as any }],
+      points: [{ id: userId, vector: await getEmbedding(user.nickname), payload: user as any }],
       wait: true
     });
   }
 
   async getOrganization(): Promise<Organization | null> {
-    const response = await this.client.retrieve('metadata', { ids: ['organization'], with_payload: true });
+    const orgId = uuidv5('organization', uuidv5.DNS);
+    const response = await this.client.retrieve('metadata', { ids: [orgId], with_payload: true });
     return response[0]?.payload as unknown as Organization | null;
   }
 
   async setOrganization(org: Organization): Promise<void> {
+    const orgId = uuidv5('organization', uuidv5.DNS);
     await this.client.upsert('metadata', {
-      points: [{ id: 'organization', vector: await getEmbedding(org.name), payload: org as any }],
+      points: [{ id: orgId, vector: await getEmbedding(org.name), payload: JSON.parse(JSON.stringify(org)) as any }],
       wait: true
     });
   }
@@ -274,7 +281,7 @@ class QdrantDatabase implements IDatabase {
     const response = await this.client.scroll('chat_history', {
       limit: 100,
       with_payload: true,
-      filter: page ? { must: [{ key: 'page', match: { value: page } }] } : undefined,
+      filter: page ? { must: [{ key: 'page', match: { value: page } }] } : undefined
     });
     return response.points.map(point => point.payload as unknown as ChatMessage).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
@@ -305,7 +312,11 @@ class QdrantDatabase implements IDatabase {
   }
 
   async clearChatHistory(page?: string): Promise<void> {
-    const points = (await this.getChatHistory(page)).map(m => m.id);
+    const chatHistory = await this.getChatHistory(page);
+    if (chatHistory.length === 0) {
+      return;
+    }
+    const points = chatHistory.map(m => m.id);
     await this.client.delete('chat_history', { points });
   }
 
@@ -328,151 +339,151 @@ class QdrantDatabase implements IDatabase {
 const db = new QdrantDatabase();
 
 export const getUser = async () => {
-    await db.ensureInitialized();
-    return db.getUser();
+  await db.ensureInitialized();
+  return db.getUser();
 };
 
 export const setUser = async (user: User) => {
-    await db.ensureInitialized();
-    return db.setUser(user);
+  await db.ensureInitialized();
+  return db.setUser(user);
 };
 
 export const getOrganization = async () => {
-    await db.ensureInitialized();
-    return db.getOrganization();
+  await db.ensureInitialized();
+  return db.getOrganization();
 };
 
 export const setOrganization = async (org: Organization) => {
-    await db.ensureInitialized();
-    return db.setOrganization(org);
+  await db.ensureInitialized();
+  return db.setOrganization(org);
 };
 
 export const updateOrganization = async (updates: Partial<Organization>) => {
-    await db.ensureInitialized();
-    return db.updateOrganization(updates);
+  await db.ensureInitialized();
+  return db.updateOrganization(updates);
 };
 
 export const getAreas = async () => {
-    await db.ensureInitialized();
-    return db.getAreas();
+  await db.ensureInitialized();
+  return db.getAreas();
 };
 
 export const getArea = async (id: string) => {
-    await db.ensureInitialized();
-    return db.getArea(id);
+  await db.ensureInitialized();
+  return db.getArea(id);
 };
 
 export const createArea = async (area: Omit<Area, 'id' | 'createdAt' | 'updatedAt'>) => {
-    await db.ensureInitialized();
-    return db.createArea(area);
+  await db.ensureInitialized();
+  return db.createArea(area);
 };
 
 export const updateArea = async (id: string, updates: Partial<Area>) => {
-    await db.ensureInitialized();
-    return db.updateArea(id, updates);
+  await db.ensureInitialized();
+  return db.updateArea(id, updates);
 };
 
 export const deleteArea = async (id: string) => {
-    await db.ensureInitialized();
-    return db.deleteArea(id);
+  await db.ensureInitialized();
+  return db.deleteArea(id);
 };
 
 export const getKPIs = async (areaId?: string) => {
-    await db.ensureInitialized();
-    return db.getKPIs(areaId);
+  await db.ensureInitialized();
+  return db.getKPIs(areaId);
 };
 
 export const getKPI = async (id: string) => {
-    await db.ensureInitialized();
-    return db.getKPI(id);
+  await db.ensureInitialized();
+  return db.getKPI(id);
 };
 
 export const createKPI = async (kpi: Omit<KPI, 'id' | 'createdAt' | 'updatedAt'>) => {
-    await db.ensureInitialized();
-    return db.createKPI(kpi);
+  await db.ensureInitialized();
+  return db.createKPI(kpi);
 };
 
 export const updateKPI = async (id: string, updates: Partial<KPI>) => {
-    await db.ensureInitialized();
-    return db.updateKPI(id, updates);
+  await db.ensureInitialized();
+  return db.updateKPI(id, updates);
 };
 
 export const deleteKPI = async (id: string) => {
-    await db.ensureInitialized();
-    return db.deleteKPI(id);
+  await db.ensureInitialized();
+  return db.deleteKPI(id);
 };
 
 export const getTasks = async (areaId?: string) => {
-    await db.ensureInitialized();
-    return db.getTasks(areaId);
+  await db.ensureInitialized();
+  return db.getTasks(areaId);
 };
 
 export const getTask = async (id: string) => {
-    await db.ensureInitialized();
-    return db.getTask(id);
+  await db.ensureInitialized();
+  return db.getTask(id);
 };
 
 export const createTask = async (task: Omit<Task, 'id' | 'createdAt' | 'updatedAt'>) => {
-    await db.ensureInitialized();
-    return db.createTask(task);
+  await db.ensureInitialized();
+  return db.createTask(task);
 };
 
 export const updateTask = async (id: string, updates: Partial<Task>) => {
-    await db.ensureInitialized();
-    return db.updateTask(id, updates);
+  await db.ensureInitialized();
+  return db.updateTask(id, updates);
 };
 
 export const deleteTask = async (id: string) => {
-    await db.ensureInitialized();
-    return db.deleteTask(id);
+  await db.ensureInitialized();
+  return db.deleteTask(id);
 };
 
 export const getProcesses = async (areaId?: string) => {
-    await db.ensureInitialized();
-    return db.getProcesses(areaId);
+  await db.ensureInitialized();
+  return db.getProcesses(areaId);
 };
 
 export const getProcess = async (id: string) => {
-    await db.ensureInitialized();
-    return db.getProcess(id);
+  await db.ensureInitialized();
+  return db.getProcess(id);
 };
 
 export const createProcess = async (process: Omit<Process, 'id' | 'createdAt' | 'updatedAt'>) => {
-    await db.ensureInitialized();
-    return db.createProcess(process);
+  await db.ensureInitialized();
+  return db.createProcess(process);
 };
 
 export const updateProcess = async (id: string, updates: Partial<Process>) => {
-    await db.ensureInitialized();
-    return db.updateProcess(id, updates);
+  await db.ensureInitialized();
+  return db.updateProcess(id, updates);
 };
 
 export const deleteProcess = async (id: string) => {
-    await db.ensureInitialized();
-    return db.deleteProcess(id);
+  await db.ensureInitialized();
+  return db.deleteProcess(id);
 };
 
 export const getChatHistory = async (page?: string) => {
-    await db.ensureInitialized();
-    return db.getChatHistory(page);
+  await db.ensureInitialized();
+  return db.getChatHistory(page);
 };
 
 export const addChatMessage = async (message: Omit<ChatMessage, 'id' | 'timestamp'>, page?: string) => {
-    await db.ensureInitialized();
-    return db.addChatMessage(message, page);
+  await db.ensureInitialized();
+  return db.addChatMessage(message, page);
 };
 
 export const saveChatHistory = async (messages: ChatMessage[], page?: string) => {
-    await db.ensureInitialized();
-    return db.saveChatHistory(messages, page);
+  await db.ensureInitialized();
+  return db.saveChatHistory(messages, page);
 };
 
 export const clearChatHistory = async (page?: string) => {
-    await db.ensureInitialized();
-    return db.clearChatHistory(page);
+  await db.ensureInitialized();
+  return db.clearChatHistory(page);
 };
 
 export const search = async (query: string, collections: string[], areaId?: string, limit: number = 5) => {
-    await db.ensureInitialized();
-    return db.search(query, collections, areaId, limit);
+  await db.ensureInitialized();
+  return db.search(query, collections, areaId, limit);
 };

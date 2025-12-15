@@ -22,7 +22,6 @@ const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' })
 
 export async function getEmbedding(text: string): Promise<number[]> {
   if (!text || text.trim() === '') {
-    // Return a zero-vector if the text is empty
     return Array(768).fill(0);
   }
   const result = await embeddingModel.embedContent(text);
